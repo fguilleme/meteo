@@ -1,0 +1,15 @@
+{
+  "name": "meteo-synop-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:data": "node scripts/build-cache.js",
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "chartjs-plugin-zoom": "^2.2.0"
+  }
+}

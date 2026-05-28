@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meteo SYNOP France</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/vendor/chart.umd.js"></script>
+    <script src="/vendor/hammer.min.js"></script>
+    <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">SYNOP France 1996-2026</p>
+          <h1>Temperatures mensuelles des principales villes</h1>
+        </div>
+        <div class="actions">
+          <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">◐</button>
+          <button class="primary-button" id="cityButton" type="button">Choisir une ville</button>
+        </div>
+      </section>
+
+      <section class="summary" aria-live="polite">
+        <div class="station-summary">
+          <span>Ville / Station / Code</span>
+          <strong>
+            <span id="currentCity">Chargement</span>
+            <span class="summary-separator">/</span>
+            <span id="currentStation">-</span>
+            <span class="summary-separator">/</span>
+            <span id="currentCode">-</span>
+          </strong>
+        </div>
+      </section>
+
+      <section class="range-panel" aria-label="Fenetre affichee">
+        <div class="window-status">
+          <span>Fenetre</span>
+          <strong id="windowLabel">Derniere periode</strong>
+        </div>
+        <div class="range-actions" aria-label="Raccourcis de plage">
+          <button class="range-button" data-range="all" type="button">Tout</button>
+          <button class="range-button" data-range="10y" type="button">10 ans</button>
+          <button class="range-button" data-range="5y" type="button">5 ans</button>
+          <button class="range-button" data-range="2y" type="button">2 ans</button>
+          <button class="range-button" data-range="1y" type="button">1 an</button>
+          <button class="range-button" data-range="6m" type="button">6 mois</button>
+          <button class="range-button" id="resetZoom" type="button">Recentrer</button>
+        </div>
+      </section>
+
+      <section class="chart-panel">
+        <canvas id="temperatureChart"></canvas>
+      </section>
+    </main>
+
+    <div class="modal-backdrop" id="cityModal" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h2 id="modalTitle">Ville</h2>
+          <button class="icon-button" id="closeModal" type="button" aria-label="Fermer">×</button>
+        </div>
+        <input id="citySearch" class="search-input" type="search" placeholder="Rechercher une ville ou un code station">
+        <div class="city-list" id="cityList"></div>
+      </div>
+    </div>
+
+    <script src="/app.js?v=adaptive-x-axis-20260528"></script>
+  </body>
+</html>
