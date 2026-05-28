@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Meteo SYNOP France</title>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=city-right-20260528">
     <script src="/vendor/chart.umd.js"></script>
     <script src="/vendor/hammer.min.js"></script>
     <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -18,20 +18,25 @@
         </div>
         <div class="actions">
           <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">◐</button>
-          <button class="primary-button" id="cityButton" type="button">Choisir une ville</button>
         </div>
       </section>
 
       <section class="summary" aria-live="polite">
         <div class="station-summary">
-          <span>Ville / Station / Code</span>
-          <strong>
-            <span id="currentCity">Chargement</span>
-            <span class="summary-separator">/</span>
-            <span id="currentStation">-</span>
-            <span class="summary-separator">/</span>
-            <span id="currentCode">-</span>
-          </strong>
+          <div class="station-identity">
+            <span>Ville / Station / Code</span>
+            <strong>
+              <span id="currentCity">Chargement</span>
+              <span class="summary-separator">/</span>
+              <span id="currentStation">-</span>
+              <span class="summary-separator">/</span>
+              <span id="currentCode">-</span>
+            </strong>
+          </div>
+          <label class="city-select-label" for="citySelect">
+            <span>Ville</span>
+            <select id="citySelect"></select>
+          </label>
         </div>
       </section>
 
@@ -41,13 +46,13 @@
           <strong id="windowLabel">Derniere periode</strong>
         </div>
         <div class="range-actions" aria-label="Raccourcis de plage">
-          <button class="range-button" data-range="all" type="button">Tout</button>
-          <button class="range-button" data-range="10y" type="button">10 ans</button>
-          <button class="range-button" data-range="5y" type="button">5 ans</button>
-          <button class="range-button" data-range="2y" type="button">2 ans</button>
-          <button class="range-button" data-range="1y" type="button">1 an</button>
-          <button class="range-button" data-range="6m" type="button">6 mois</button>
-          <button class="range-button" id="resetZoom" type="button">Recentrer</button>
+          <button class="range-button" data-zoom="all" type="button">Tout</button>
+          <button class="range-button" data-zoom="10y" type="button">10 ans</button>
+          <button class="range-button" data-zoom="5y" type="button">5 ans</button>
+          <button class="range-button" data-zoom="2y" type="button">2 ans</button>
+          <button class="range-button" data-zoom="1y" type="button">1 an</button>
+          <button class="range-button" data-zoom="6m" type="button">6 mois</button>
+          <button class="range-button align-end-button" id="alignEnd" type="button">Fin</button>
         </div>
       </section>
 
@@ -56,17 +61,6 @@
       </section>
     </main>
 
-    <div class="modal-backdrop" id="cityModal" aria-hidden="true">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <div class="modal-header">
-          <h2 id="modalTitle">Ville</h2>
-          <button class="icon-button" id="closeModal" type="button" aria-label="Fermer">×</button>
-        </div>
-        <input id="citySearch" class="search-input" type="search" placeholder="Rechercher une ville ou un code station">
-        <div class="city-list" id="cityList"></div>
-      </div>
-    </div>
-
-    <script src="/app.js?v=adaptive-x-axis-20260528"></script>
+    <script src="/app.js?v=city-right-20260528"></script>
   </body>
 </html>

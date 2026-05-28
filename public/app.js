@@ -5,6 +5,7 @@ const state = {
   visibleSeries: [],
   visibleMode: "month",
   clickedIndex: null,
+  activePreset: "2y",
   rangeStart: null,
   rangeEnd: null
 };
@@ -18,18 +19,14 @@ const colors = {
 };
 
 const elements = {
-  cityButton: document.querySelector("#cityButton"),
+  citySelect: document.querySelector("#citySelect"),
   themeToggle: document.querySelector("#themeToggle"),
-  modal: document.querySelector("#cityModal"),
-  closeModal: document.querySelector("#closeModal"),
-  citySearch: document.querySelector("#citySearch"),
-  cityList: document.querySelector("#cityList"),
   currentCity: document.querySelector("#currentCity"),
   currentStation: document.querySelector("#currentStation"),
   currentCode: document.querySelector("#currentCode"),
   windowLabel: document.querySelector("#windowLabel"),
-  rangeButtons: document.querySelectorAll("[data-range]"),
-  resetZoom: document.querySelector("#resetZoom"),
+  zoomButtons: document.querySelectorAll("[data-zoom]"),
+  alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart")
 };
 
@@ -445,6 +442,18 @@ function selectedMonthSpan() {
   return monthToNumber(state.rangeEnd) - monthToNumber(state.rangeStart) + 1;
 }
 
+function zoomSpanMonths(zoom) {
+  if (zoom === "all") return Infinity;
+  if (zoom.endsWith("m")) return Number(zoom.replace("m", ""));
+  return Number(zoom.replace("y", "")) * 12;
+}
+
+function monthLabelFromNumber(value) {
+  const year = Math.floor((value - 1) / 12);
+  const month = ((value - 1) % 12) + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 function xMinForSeries(series) {
   if (state.visibleMode === "day") return lowerBoundIndex(series, `${state.rangeStart}-01`);
   return labelIndex(series, state.rangeStart, 0);
@@ -455,15 +464,17 @@ function xMaxForSeries(series) {
   return labelIndex(series, state.rangeEnd, series.length - 1);
 }
 
-function tickStep(labelCount, span) {
+function dayTickInterval(span) {
   if (state.visibleMode === "day") {
-    if (span > 540) return 60;
-    if (span > 240) return 30;
-    if (span > 90) return 14;
-    if (span > 45) return 7;
+    if (span > 540) return 3;
+    if (span > 240) return 2;
+    if (span > 45) return 1;
     return Math.max(1, Math.ceil(span / 12));
   }
+  return 1;
+}
 
+function monthTickInterval(span) {
   if (span > 180) return 24;
   if (span > 72) return 12;
   if (span > 36) return 6;
@@ -471,17 +482,31 @@ function tickStep(labelCount, span) {
   return 1;
 }
 
-function axisTickLabel(label, index, labels, span) {
+function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
+  if (index === visibleStart || index === visibleEnd) return true;
+
+  if (state.visibleMode === "day") {
+    const date = new Date(`${label}T00:00:00Z`);
+    if (span <= 45) {
+      return (index - visibleStart) % dayTickInterval(span) === 0;
+    }
+    return date.getUTCDate() === 1 && date.getUTCMonth() % dayTickInterval(span) === 0;
+  }
+
+  const [year, month] = label.split("-").map(Number);
+  if (span <= 36) return (month - 1) % monthTickInterval(span) === 0;
+  return month === 1 && year % Math.max(1, monthTickInterval(span) / 12) === 0;
+}
+
+function axisTickLabel(label, index, span, visibleStart) {
   if (state.visibleMode === "day") {
     const date = new Date(`${label}T00:00:00Z`);
     if (span <= 45) {
       return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(date);
     }
-    if (date.getUTCDate() <= 7 || index === 0 || index === labels.length - 1) {
-      const month = shortMonthFormatter.format(date).replace(".", "");
-      return date.getUTCMonth() === 0 ? `${month} ${date.getUTCFullYear()}` : month;
-    }
-    return "";
+
+    const month = shortMonthFormatter.format(date).replace(".", "");
+    return date.getUTCMonth() === 0 || index === visibleStart ? `${month} ${date.getUTCFullYear()}` : month;
   }
 
   const [year, month] = label.split("-").map(Number);
@@ -489,7 +514,7 @@ function axisTickLabel(label, index, labels, span) {
     const monthName = shortMonthFormatter
       .format(new Date(Date.UTC(year, month - 1, 1)))
       .replace(".", "");
-    return month === 1 ? `${monthName} ${year}` : monthName;
+    return month === 1 || index === visibleStart ? `${monthName} ${year}` : monthName;
   }
   return String(year);
 }
@@ -542,7 +567,7 @@ function chartOptions() {
       },
       zoom: {
         limits: {
-          x: { min: "original", max: "original" },
+          x: { min: 0, max: Math.max(0, state.visibleSeries.length - 1) },
           y: { min: "original", max: "original" }
         },
         pan: {
@@ -578,11 +603,12 @@ function chartOptions() {
             const labels = this.chart.data.labels;
             const label = this.getLabelForValue(value);
             const lastIndex = labels.length - 1;
-            const span = Math.max(1, (this.chart.scales.x.max ?? lastIndex) - (this.chart.scales.x.min ?? 0));
-            const step = tickStep(labels.length, span);
+            const visibleStart = Math.max(0, Math.ceil(this.chart.scales.x.min ?? 0));
+            const visibleEnd = Math.min(lastIndex, Math.floor(this.chart.scales.x.max ?? lastIndex));
+            const span = Math.max(1, visibleEnd - visibleStart);
 
-            if (value === 0 || value === lastIndex || value % step === 0) {
-              return axisTickLabel(label, value, labels, span);
+            if (shouldShowAxisTick(label, value, span, visibleStart, visibleEnd)) {
+              return axisTickLabel(label, value, span, visibleStart);
             }
             return "";
           }
@@ -592,9 +618,11 @@ function chartOptions() {
             const labels = context.chart.data.labels;
             const value = context.tick.value;
             const lastIndex = labels.length - 1;
-            const span = Math.max(1, (context.chart.scales.x.max ?? lastIndex) - (context.chart.scales.x.min ?? 0));
-            const step = tickStep(labels.length, span);
-            const visibleTick = value === 0 || value === lastIndex || value % step === 0;
+            const label = labels[value];
+            const visibleStart = Math.max(0, Math.ceil(context.chart.scales.x.min ?? 0));
+            const visibleEnd = Math.min(lastIndex, Math.floor(context.chart.scales.x.max ?? lastIndex));
+            const span = Math.max(1, visibleEnd - visibleStart);
+            const visibleTick = label && shouldShowAxisTick(label, value, span, visibleStart, visibleEnd);
             if (!visibleTick) return "rgba(0, 0, 0, 0)";
             return isLight() ? colors.gridLight : colors.gridDark;
           }
@@ -654,7 +682,6 @@ function updateSummary(city, series) {
   elements.currentCity.textContent = city.city;
   elements.currentStation.textContent = city.station;
   elements.currentCode.textContent = city.code;
-  elements.cityButton.textContent = city.city;
 }
 
 function renderChart() {
@@ -685,101 +712,99 @@ function renderChart() {
   state.chart.update();
 }
 
-function renderCityList() {
-  const query = elements.citySearch.value.trim().toLowerCase();
-  const cities = state.payload.cities.filter((city) => {
-    const haystack = `${city.city} ${city.station} ${city.code}`.toLowerCase();
-    return haystack.includes(query);
-  });
-
-  elements.cityList.innerHTML = "";
-  for (const city of cities) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `city-option${city.code === state.selectedCode ? " active" : ""}`;
-    button.innerHTML = `
-      <span>
-        <strong>${city.city}</strong><br>
-        <span>${city.station}</span>
-      </span>
-      <span class="code-pill">${city.code}</span>
-    `;
-    button.addEventListener("click", () => {
-      state.selectedCode = city.code;
-      closeModal();
-      renderChart();
-    });
-    elements.cityList.append(button);
+function renderCitySelect() {
+  elements.citySelect.innerHTML = "";
+  for (const city of state.payload.cities) {
+    const option = document.createElement("option");
+    option.value = city.code;
+    option.textContent = `${city.city} / ${city.station} / ${city.code}`;
+    option.selected = city.code === state.selectedCode;
+    elements.citySelect.append(option);
   }
 }
 
-function openModal() {
-  elements.modal.classList.add("open");
-  elements.modal.setAttribute("aria-hidden", "false");
-  elements.citySearch.value = "";
-  renderCityList();
-  elements.citySearch.focus();
-}
-
-function closeModal() {
-  elements.modal.classList.remove("open");
-  elements.modal.setAttribute("aria-hidden", "true");
-}
-
-function setRangePreset(preset) {
+function setWindowFromNumbers(startNumber, endNumber) {
   const city = getCity();
-  const first = city.series[0].label;
-  const last = city.series.at(-1).label;
-  const lastNumber = monthToNumber(last);
+  const firstNumber = monthToNumber(city.series[0].label);
+  const lastNumber = monthToNumber(city.series.at(-1).label);
+  const span = Math.max(1, endNumber - startNumber + 1);
 
-  state.rangeEnd = last;
-  if (preset === "all") {
-    state.rangeStart = first;
-  } else if (preset.endsWith("m")) {
-    const months = Number(preset.replace("m", ""));
-    const startNumber = Math.max(monthToNumber(first), lastNumber - months + 1);
-    const year = Math.floor((startNumber - 1) / 12);
-    const month = ((startNumber - 1) % 12) + 1;
-    state.rangeStart = `${year}-${String(month).padStart(2, "0")}`;
-  } else {
-    const years = Number(preset.replace("y", ""));
-    const startNumber = Math.max(monthToNumber(first), lastNumber - years * 12 + 1);
-    const year = Math.floor((startNumber - 1) / 12);
-    const month = ((startNumber - 1) % 12) + 1;
-    state.rangeStart = `${year}-${String(month).padStart(2, "0")}`;
+  if (startNumber < firstNumber) {
+    startNumber = firstNumber;
+    endNumber = Math.min(lastNumber, startNumber + span - 1);
   }
+  if (endNumber > lastNumber) {
+    endNumber = lastNumber;
+    startNumber = Math.max(firstNumber, endNumber - span + 1);
+  }
+
+  state.rangeStart = monthLabelFromNumber(startNumber);
+  state.rangeEnd = monthLabelFromNumber(endNumber);
+}
+
+function applyZoomSetting(zoom, align = "center") {
+  state.activePreset = zoom;
+  const city = getCity();
+  const firstNumber = monthToNumber(city.series[0].label);
+  const lastNumber = monthToNumber(city.series.at(-1).label);
+  const span = zoomSpanMonths(zoom);
+
+  if (!Number.isFinite(span) || span >= lastNumber - firstNumber + 1) {
+    state.rangeStart = city.series[0].label;
+    state.rangeEnd = city.series.at(-1).label;
+  } else {
+    let endNumber;
+    if (align === "end") {
+      endNumber = lastNumber;
+    } else {
+      const currentStart = monthToNumber(state.rangeStart || city.series[0].label);
+      const currentEnd = monthToNumber(state.rangeEnd || city.series.at(-1).label);
+      const center = Math.round((currentStart + currentEnd) / 2);
+      endNumber = center + Math.floor(span / 2);
+    }
+    setWindowFromNumbers(endNumber - span + 1, endNumber);
+  }
+
   state.clickedIndex = null;
   renderChart();
+}
+
+function alignWindowToEnd() {
+  if (!state.chart) {
+    applyZoomSetting(state.activePreset, "end");
+    return;
+  }
+
+  const xScale = state.chart.scales.x;
+  const lastIndex = state.visibleSeries.length - 1;
+  const currentMin = Number.isFinite(xScale.min) ? xScale.min : xMinForSeries(state.visibleSeries);
+  const currentMax = Number.isFinite(xScale.max) ? xScale.max : xMaxForSeries(state.visibleSeries);
+  const span = Math.max(1, currentMax - currentMin);
+  const min = Math.max(0, lastIndex - span);
+
+  state.clickedIndex = null;
+  state.chart.options.scales.x.min = min;
+  state.chart.options.scales.x.max = lastIndex;
+  state.chart.update("none");
 }
 
 async function loadData() {
   const response = await fetch(`/api/temperatures?v=${Date.now()}`, { cache: "no-store" });
   if (!response.ok) throw new Error("Impossible de charger les donnees");
   state.payload = await response.json();
-  const city = getCity();
-  state.rangeStart = city.series[0].label;
-  state.rangeEnd = city.series.at(-1).label;
-  renderCityList();
-  renderChart();
+  renderCitySelect();
+  applyZoomSetting(state.activePreset, "end");
 }
 
-elements.cityButton.addEventListener("click", openModal);
-elements.closeModal.addEventListener("click", closeModal);
-elements.citySearch.addEventListener("input", renderCityList);
-elements.rangeButtons.forEach((button) => {
-  button.addEventListener("click", () => setRangePreset(button.dataset.range));
+elements.citySelect.addEventListener("change", () => {
+  state.selectedCode = elements.citySelect.value;
+  state.clickedIndex = null;
+  applyZoomSetting(state.activePreset, "end");
 });
-elements.resetZoom.addEventListener("click", () => {
-  setRangePreset("2y");
+elements.zoomButtons.forEach((button) => {
+  button.addEventListener("click", () => applyZoomSetting(button.dataset.zoom));
 });
-elements.modal.addEventListener("click", (event) => {
-  if (event.target === elements.modal) closeModal();
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeModal();
-});
-
+elements.alignEnd.addEventListener("click", alignWindowToEnd);
 elements.themeToggle.addEventListener("click", () => {
   document.body.classList.toggle("light");
   localStorage.setItem("theme", isLight() ? "light" : "dark");
