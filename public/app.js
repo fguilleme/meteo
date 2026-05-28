@@ -7,7 +7,14 @@ const state = {
   clickedIndex: null,
   activePreset: "2y",
   rangeStart: null,
-  rangeEnd: null
+  rangeEnd: null,
+  cutListHtml: "",
+  cutPreviewHtml: "",
+  latestCutCursors: [],
+  latestCutLabel: "",
+  showCutList: false,
+  touchStart: null,
+  touchIsVertical: false
 };
 
 const colors = {
@@ -27,10 +34,19 @@ const elements = {
   windowLabel: document.querySelector("#windowLabel"),
   zoomButtons: document.querySelectorAll("[data-zoom]"),
   alignEnd: document.querySelector("#alignEnd"),
-  canvas: document.querySelector("#temperatureChart")
+  canvas: document.querySelector("#temperatureChart"),
+  cutPreviewPanel: document.querySelector("#cutPreviewPanel"),
+  cutListPanel: document.querySelector("#cutListPanel")
 };
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
+  day: "2-digit",
+  month: "long",
+  year: "numeric"
+});
+
+const weekdayDateFormatter = new Intl.DateTimeFormat("fr-FR", {
+  weekday: "long",
   day: "2-digit",
   month: "long",
   year: "numeric"
@@ -55,9 +71,53 @@ function isLight() {
   return document.body.classList.contains("light");
 }
 
+function installChartTouchHandling() {
+  elements.canvas.addEventListener("touchstart", (event) => {
+    if (event.touches.length !== 1) {
+      state.touchStart = null;
+      state.touchIsVertical = false;
+      return;
+    }
+
+    const touch = event.touches[0];
+    state.touchStart = { x: touch.clientX, y: touch.clientY };
+    state.touchIsVertical = false;
+  }, { capture: true, passive: true });
+
+  elements.canvas.addEventListener("touchmove", (event) => {
+    if (!state.touchStart || event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const dx = Math.abs(touch.clientX - state.touchStart.x);
+    const dy = Math.abs(touch.clientY - state.touchStart.y);
+    if (!state.touchIsVertical && dy > dx * 1.2 && dy > 8) {
+      state.touchIsVertical = true;
+    }
+
+    if (state.touchIsVertical) {
+      event.stopImmediatePropagation();
+    }
+  }, { capture: true, passive: true });
+
+  elements.canvas.addEventListener("touchend", () => {
+    state.touchStart = null;
+    state.touchIsVertical = false;
+  }, { capture: true, passive: true });
+
+  elements.canvas.addEventListener("touchcancel", () => {
+    state.touchStart = null;
+    state.touchIsVertical = false;
+  }, { capture: true, passive: true });
+}
+
 function formatDay(value) {
   if (!value) return "date inconnue";
   return dateFormatter.format(new Date(value));
+}
+
+function formatWeekday(value) {
+  if (!value) return "date inconnue";
+  return weekdayDateFormatter.format(new Date(value));
 }
 
 function formatPointDate(point, field) {
@@ -90,6 +150,29 @@ function roundedRect(context, x, y, width, height, radius) {
   context.arcTo(x, y + height, x, y, r);
   context.arcTo(x, y, x + width, y, r);
   context.closePath();
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function updateCutListPanel(html) {
+  if (!elements.cutListPanel || state.cutListHtml === html) return;
+  state.cutListHtml = html;
+  elements.cutListPanel.innerHTML = html;
+  elements.cutListPanel.hidden = !html;
+}
+
+function updateCutPreviewPanel(html) {
+  if (!elements.cutPreviewPanel || state.cutPreviewHtml === html) return;
+  state.cutPreviewHtml = html;
+  elements.cutPreviewPanel.innerHTML = html;
+  elements.cutPreviewPanel.hidden = !html;
 }
 
 function monthTitle(label) {
@@ -127,16 +210,32 @@ function dateValueForPoint(datasetLabel, point) {
   return Date.UTC(parts[0], parts[1] - 1, 15);
 }
 
-function interpolatedCutDate(datasetLabel, index, ratio) {
-  const pointA = state.visibleSeries[index];
-  const pointB = state.visibleSeries[index + 1];
-  const dateA = dateValueForPoint(datasetLabel, pointA);
-  const dateB = dateValueForPoint(datasetLabel, pointB);
-  if (!Number.isFinite(dateA) || !Number.isFinite(dateB)) {
-    return dateForPoint(datasetLabel, ratio < 0.5 ? pointA : pointB);
+function timeForLabel(label) {
+  if (!label) return null;
+  const parts = label.split("-").map(Number);
+  if (parts.length === 3) return Date.UTC(parts[0], parts[1] - 1, parts[2], 12);
+  return Date.UTC(parts[0], parts[1] - 1, 15);
+}
+
+function interpolatedAxisTime(index, ratio) {
+  const timeA = timeForLabel(state.visibleSeries[index]?.label);
+  const timeB = timeForLabel(state.visibleSeries[index + 1]?.label);
+  if (!Number.isFinite(timeA) || !Number.isFinite(timeB)) {
+    return timeForLabel(state.visibleSeries[ratio < 0.5 ? index : index + 1]?.label);
   }
 
-  return formatDay(new Date(dateA + (dateB - dateA) * ratio));
+  return timeA + (timeB - timeA) * ratio;
+}
+
+function axisTimeAt(value) {
+  const low = Math.max(0, Math.min(state.visibleSeries.length - 1, Math.floor(value)));
+  const high = Math.max(0, Math.min(state.visibleSeries.length - 1, Math.ceil(value)));
+  if (low === high) return timeForLabel(state.visibleSeries[low]?.label);
+
+  const timeLow = timeForLabel(state.visibleSeries[low]?.label);
+  const timeHigh = timeForLabel(state.visibleSeries[high]?.label);
+  if (!Number.isFinite(timeLow) || !Number.isFinite(timeHigh)) return timeLow;
+  return timeLow + (timeHigh - timeLow) * (value - low);
 }
 
 function rightmostVisibleIndex(chart) {
@@ -154,20 +253,32 @@ function visibleMonthSpan(chart) {
   return max - min;
 }
 
-function horizontalIntersections(chart, yValue) {
+function valueForDatasetLabel(point, label) {
+  if (label === "Max") return point.max;
+  if (label === "Min") return point.min;
+  return point.avg;
+}
+
+function horizontalIntersections(chart, yValue, targetLabel) {
   const xScale = chart.scales.x;
-  const minIndex = Math.max(0, Math.floor(Number.isFinite(xScale.min) ? xScale.min : 0) - 1);
-  const maxIndex = Math.min(
-    chart.data.labels.length - 1,
-    Math.ceil(Number.isFinite(xScale.max) ? xScale.max : chart.data.labels.length - 1) + 1
-  );
+  const visibleMin = Number.isFinite(xScale.min) ? xScale.min : 0;
+  const visibleMax = Number.isFinite(xScale.max) ? xScale.max : chart.data.labels.length - 1;
+  const visibleStartTime = axisTimeAt(visibleMin);
+  const visibleEndTime = axisTimeAt(visibleMax);
+  const dailySeries = getCity().dailySeries;
   const intersections = [];
 
-  chart.data.datasets.forEach((dataset) => {
-    const values = dataset.data;
-    for (let index = minIndex; index < maxIndex; index += 1) {
-      const yA = values[index];
-      const yB = values[index + 1];
+  if (dailySeries?.length && Number.isFinite(visibleStartTime) && Number.isFinite(visibleEndTime)) {
+    const color = targetLabel === "Max" ? colors.max : colors.min;
+    for (let index = 0; index < dailySeries.length - 1; index += 1) {
+      const pointA = dailySeries[index];
+      const pointB = dailySeries[index + 1];
+      const timeA = timeForLabel(pointA.label);
+      const timeB = timeForLabel(pointB.label);
+      if (timeB < visibleStartTime || timeA > visibleEndTime) continue;
+
+      const yA = valueForDatasetLabel(pointA, targetLabel);
+      const yB = valueForDatasetLabel(pointB, targetLabel);
       if (!Number.isFinite(yA) || !Number.isFinite(yB) || yA === yB) continue;
 
       const min = Math.min(yA, yB);
@@ -175,30 +286,146 @@ function horizontalIntersections(chart, yValue) {
       if (yValue < min || yValue > max) continue;
 
       const ratio = (yValue - yA) / (yB - yA);
-      const x = xScale.getPixelForValue(index + ratio);
-      if (x < chart.chartArea.left || x > chart.chartArea.right) continue;
+      const time = timeA + (timeB - timeA) * ratio;
+      if (time < visibleStartTime || time > visibleEndTime) continue;
+      const x = chart.chartArea.left
+        + ((time - visibleStartTime) / (visibleEndTime - visibleStartTime)) * (chart.chartArea.right - chart.chartArea.left);
 
       intersections.push({
         x,
-        color: dataset.borderColor,
-        label: `${dataset.label} ${formatValue(yValue)} · ${interpolatedCutDate(dataset.label, index, ratio)}`
+        time,
+        color,
+        datasetLabel: targetLabel,
+        formattedValue: formatValue(yValue),
+        value: yValue,
+        date: formatDay(new Date(time)),
+        weekdayDate: formatWeekday(new Date(time))
       });
     }
-  });
+    return intersections.sort((a, b) => a.x - b.x);
+  }
+
+  const minIndex = Math.max(0, Math.floor(visibleMin) - 1);
+  const maxIndex = Math.min(chart.data.labels.length - 1, Math.ceil(visibleMax) + 1);
+  chart.data.datasets
+    .filter((dataset) => !targetLabel || dataset.label === targetLabel)
+    .forEach((dataset) => {
+      const values = dataset.data;
+      for (let index = minIndex; index < maxIndex; index += 1) {
+        const yA = values[index];
+        const yB = values[index + 1];
+        if (!Number.isFinite(yA) || !Number.isFinite(yB) || yA === yB) continue;
+
+        const min = Math.min(yA, yB);
+        const max = Math.max(yA, yB);
+        if (yValue < min || yValue > max) continue;
+
+        const ratio = (yValue - yA) / (yB - yA);
+        const x = xScale.getPixelForValue(index + ratio);
+        if (x < chart.chartArea.left || x > chart.chartArea.right) continue;
+        const time = interpolatedAxisTime(index, ratio);
+
+        intersections.push({
+          x,
+          time,
+          color: dataset.borderColor,
+          datasetLabel: dataset.label,
+          formattedValue: formatValue(yValue),
+          value: yValue,
+          date: formatDay(new Date(time)),
+          weekdayDate: formatWeekday(new Date(time))
+        });
+      }
+    });
 
   return intersections.sort((a, b) => a.x - b.x);
+}
+
+function renderCutList(cursors, activeLabel) {
+  if (!state.showCutList) {
+    updateCutListPanel("");
+    return;
+  }
+
+  const sections = cursors.map((cursor) => {
+    const rows = sortedCutRows(cursor);
+    const body = rows.length
+      ? rows.map((row) => `
+          <li class="cut-list-row">
+            <span class="cut-dot" style="--cut-color: ${escapeHtml(row.color)}"></span>
+            <span>${escapeHtml(row.datasetLabel)} ${escapeHtml(row.formattedValue)}</span>
+            <span>${escapeHtml(row.weekdayDate)}</span>
+          </li>
+        `).join("")
+      : `<li class="cut-list-empty">Aucune coupe visible</li>`;
+
+    return `
+      <article class="cut-list-section">
+        <h2 style="--cut-color: ${escapeHtml(cursor.color)}">${escapeHtml(cursor.label)}</h2>
+        <ul>${body}</ul>
+      </article>
+    `;
+  }).join("");
+
+  updateCutListPanel(`
+    <div class="cut-list-header">
+      <span>Liste complete des coupes</span>
+      <strong>${escapeHtml(longLabel(activeLabel))}</strong>
+    </div>
+    <div class="cut-list-grid">${sections}</div>
+  `);
+}
+
+function sortedCutRows(cursor) {
+  return cursor.intersections
+    .filter((intersection) => Number.isFinite(intersection.time))
+    .sort((a, b) => {
+      const distance = Math.abs(a.time - cursor.referenceTime) - Math.abs(b.time - cursor.referenceTime);
+      return distance || b.time - a.time;
+    });
+}
+
+function renderCutPreview(cursors, activeLabel) {
+  const sections = cursors.map((cursor) => {
+    const rows = sortedCutRows(cursor);
+    const shownRows = rows.slice(0, 4);
+    const hiddenCount = Math.max(0, rows.length - shownRows.length);
+    const body = shownRows.length
+      ? shownRows.map((row) => `
+          <li>
+            <span class="cut-dot" style="--cut-color: ${escapeHtml(row.color)}"></span>
+            <span>${escapeHtml(row.date)}</span>
+          </li>
+        `).join("")
+      : `<li class="cut-list-empty">Aucune coupe visible</li>`;
+    const more = hiddenCount > 0 ? `<p>+ ${hiddenCount} autres</p>` : "";
+
+    return `
+      <section class="cut-preview-section">
+        <h2 style="--cut-color: ${escapeHtml(cursor.color)}">${escapeHtml(cursor.label)}</h2>
+        <ul>${body}</ul>
+        ${more}
+      </section>
+    `;
+  }).join("");
+
+  updateCutPreviewPanel(`
+    <span class="cut-preview-title">Coupes proches de ${escapeHtml(longLabel(activeLabel))}</span>
+    <div class="cut-preview-grid">${sections}</div>
+  `);
 }
 
 const rightEdgeCursorPlugin = {
   id: "rightEdgeCursor",
   afterDraw(chart) {
     const index = rightmostVisibleIndex(chart);
-    if (index < 0) return;
+    if (index < 0) {
+      updateCutPreviewPanel("");
+      updateCutListPanel("");
+      return;
+    }
 
     const { ctx, chartArea, scales } = chart;
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
-    const panelColor = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
-    const labelColor = isLight() ? "rgba(23, 32, 47, 0.55)" : "rgba(243, 246, 251, 0.62)";
     const x = scales.x.getPixelForValue(index);
     const cursors = chart.data.datasets
       .filter((dataset) => dataset.label === "Max" || dataset.label === "Min")
@@ -210,11 +437,13 @@ const rightEdgeCursorPlugin = {
       .filter((cursor) => Number.isFinite(cursor.value));
 
     ctx.save();
-    ctx.font = "700 12px system-ui, sans-serif";
-    cursors.forEach((cursor, cursorIndex) => {
+    const detailCursors = [];
+    cursors.forEach((cursor) => {
       const y = scales.y.getPixelForValue(cursor.value);
       if (y < chartArea.top || y > chartArea.bottom) return;
-      const intersections = horizontalIntersections(chart, cursor.value);
+      const intersections = horizontalIntersections(chart, cursor.value, cursor.label);
+      const referenceTime = axisTimeAt(Number.isFinite(scales.x.max) ? scales.x.max : index);
+      detailCursors.push({ ...cursor, intersections, referenceTime });
 
       ctx.lineWidth = 1;
       ctx.strokeStyle = cursor.color;
@@ -240,33 +469,13 @@ const rightEdgeCursorPlugin = {
         ctx.fill();
       });
       ctx.globalAlpha = 1;
-
-      const visibleRows = intersections.slice(-4).reverse();
-      const hiddenCount = Math.max(0, intersections.length - visibleRows.length);
-      const rows = [
-        `${cursor.label} ${formatValue(cursor.value)}`,
-        ...visibleRows.map((intersection) => intersection.label)
-      ];
-      if (hiddenCount > 0) rows.push(`+ ${hiddenCount} autres`);
-
-      const width = Math.max(...rows.map((row) => ctx.measureText(row).width)) + 20;
-      const height = rows.length * 16 + 10;
-      const labelX = chartArea.right - width;
-      const labelY = Math.min(Math.max(y - 18 + cursorIndex * 22, chartArea.top), chartArea.bottom - height);
-
-      roundedRect(ctx, labelX, labelY, width, height, 6);
-      ctx.fillStyle = panelColor;
-      ctx.fill();
-      ctx.strokeStyle = labelColor;
-      ctx.stroke();
-      rows.forEach((row, rowIndex) => {
-        const rowY = labelY + 15 + rowIndex * 16;
-        ctx.fillStyle = rowIndex === 0 ? cursor.color : textColor;
-        ctx.fillText(row, labelX + 9, rowY);
-      });
     });
 
     ctx.restore();
+    state.latestCutCursors = detailCursors;
+    state.latestCutLabel = state.visibleSeries[index]?.label ?? "";
+    renderCutPreview(detailCursors, state.latestCutLabel);
+    renderCutList(detailCursors, state.latestCutLabel);
   }
 };
 
@@ -582,7 +791,7 @@ function chartOptions() {
             speed: 0.08
           },
           pinch: {
-            enabled: false
+            enabled: true
           },
           drag: {
             enabled: false
@@ -766,6 +975,8 @@ function applyZoomSetting(zoom, align = "center") {
   }
 
   state.clickedIndex = null;
+  state.showCutList = false;
+  updateCutListPanel("");
   renderChart();
 }
 
@@ -783,6 +994,8 @@ function alignWindowToEnd() {
   const min = Math.max(0, lastIndex - span);
 
   state.clickedIndex = null;
+  state.showCutList = false;
+  updateCutListPanel("");
   state.chart.options.scales.x.min = min;
   state.chart.options.scales.x.max = lastIndex;
   state.chart.update("none");
@@ -799,12 +1012,18 @@ async function loadData() {
 elements.citySelect.addEventListener("change", () => {
   state.selectedCode = elements.citySelect.value;
   state.clickedIndex = null;
+  state.showCutList = false;
+  updateCutListPanel("");
   applyZoomSetting(state.activePreset, "end");
 });
 elements.zoomButtons.forEach((button) => {
   button.addEventListener("click", () => applyZoomSetting(button.dataset.zoom));
 });
 elements.alignEnd.addEventListener("click", alignWindowToEnd);
+elements.cutPreviewPanel.addEventListener("click", () => {
+  state.showCutList = true;
+  renderCutList(state.latestCutCursors, state.latestCutLabel);
+});
 elements.themeToggle.addEventListener("click", () => {
   document.body.classList.toggle("light");
   localStorage.setItem("theme", isLight() ? "light" : "dark");
@@ -814,6 +1033,8 @@ elements.themeToggle.addEventListener("click", () => {
 if (localStorage.getItem("theme") === "light") {
   document.body.classList.add("light");
 }
+
+installChartTouchHandling();
 
 loadData().catch((error) => {
   elements.currentCity.textContent = "Erreur";

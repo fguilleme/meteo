@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Meteo SYNOP France</title>
-    <link rel="stylesheet" href="/styles.css?v=city-right-20260528">
+    <link rel="stylesheet" href="/styles.css?v=compact-preview-phone-20260528">
     <script src="/vendor/chart.umd.js"></script>
     <script src="/vendor/hammer.min.js"></script>
     <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -58,9 +58,11 @@
 
       <section class="chart-panel">
         <canvas id="temperatureChart"></canvas>
+        <button class="cut-preview-panel" id="cutPreviewPanel" type="button" hidden></button>
       </section>
+      <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
     </main>
 
-    <script src="/app.js?v=city-right-20260528"></script>
+    <script src="/app.js?v=compact-preview-phone-20260528"></script>
   </body>
 </html>
