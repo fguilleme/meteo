@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "build:data": "node scripts/build-cache.js",
+    "update:data": "node scripts/update-synop.js",
+    "deploy": "bash scripts/deploy.sh",
     "start": "node server.js",
     "dev": "node server.js"
   },

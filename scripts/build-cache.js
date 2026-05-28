@@ -1,12 +1,13 @@
 import { createInterface } from "node:readline";
 import { createReadStream } from "node:fs";
-import { readdir, writeFile, mkdir } from "node:fs/promises";
+import { readdir, writeFile, mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const outputPath = path.join(rootDir, "data", "monthly-temperatures.json");
+const tmpOutputPath = `${outputPath}.tmp`;
 
 const stations = [
   { city: "Paris", code: "07149", station: "ORLY" },
@@ -203,7 +204,8 @@ async function main() {
   };
 
   await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, JSON.stringify(payload), "utf8");
+  await writeFile(tmpOutputPath, JSON.stringify(payload), "utf8");
+  await rename(tmpOutputPath, outputPath);
   console.log(`Wrote ${path.relative(rootDir, outputPath)}`);
 }
 
