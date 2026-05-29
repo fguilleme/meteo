@@ -10,10 +10,8 @@ const state = {
   rangeStart: null,
   rangeEnd: null,
   cutListHtml: "",
-  cutPreviewHtml: "",
   latestCutCursors: [],
   latestCutLabel: "",
-  showCutList: false,
   touchStart: null,
   touchGesture: null,
   touchDirection: null,
@@ -40,7 +38,6 @@ const elements = {
   zoomButtons: document.querySelectorAll("[data-zoom]"),
   alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart"),
-  cutPreviewPanel: document.querySelector("#cutPreviewPanel"),
   cutListPanel: document.querySelector("#cutListPanel"),
 };
 
@@ -347,13 +344,6 @@ function updateCutListPanel(html) {
   elements.cutListPanel.hidden = !html;
 }
 
-function updateCutPreviewPanel(html) {
-  if (!elements.cutPreviewPanel || state.cutPreviewHtml === html) return;
-  state.cutPreviewHtml = html;
-  elements.cutPreviewPanel.innerHTML = html;
-  elements.cutPreviewPanel.hidden = !html;
-}
-
 function monthTitle(label) {
   const parts = label.split("-").map(Number);
   const value =
@@ -613,11 +603,6 @@ function thresholdIntersections(chart, threshold, targetLabel) {
 }
 
 function renderCutList(cursors, activeLabel) {
-  if (!state.showCutList) {
-    updateCutListPanel("");
-    return;
-  }
-
   const sections = cursors
     .map((cursor) => {
       const rows = sortedCutRows(cursor);
@@ -662,42 +647,6 @@ function sortedCutRows(cursor) {
         Math.abs(b.time - cursor.referenceTime);
       return distance || b.time - a.time;
     });
-}
-
-function renderCutPreview(cursors, activeLabel) {
-  const sections = cursors
-    .map((cursor) => {
-      const rows = sortedCutRows(cursor);
-      const shownRows = rows.slice(0, 4);
-      const hiddenCount = Math.max(0, rows.length - shownRows.length);
-      const body = shownRows.length
-        ? shownRows
-          .map(
-            (row) => `
-          <li>
-            <span class="cut-dot" style="--cut-color: ${escapeHtml(row.color)}"></span>
-            <span>${escapeHtml(row.date)}</span>
-          </li>
-        `,
-          )
-          .join("")
-        : `<li class="cut-list-empty">Aucune coupe visible</li>`;
-      const more = hiddenCount > 0 ? `<p>+ ${hiddenCount} autres</p>` : "";
-
-      return `
-      <section class="cut-preview-section">
-        <h2 style="--cut-color: ${escapeHtml(cursor.color)}">${escapeHtml(cursor.label)}</h2>
-        <ul>${body}</ul>
-        ${more}
-      </section>
-    `;
-    })
-    .join("");
-
-  updateCutPreviewPanel(`
-    <span class="cut-preview-title">Épisodes chauds proches de<br/> ${escapeHtml(longLabel(activeLabel))}</span>
-    <div class="cut-preview-grid">${sections}</div>
-  `);
 }
 
 const rightEdgeCursorPlugin = {
@@ -768,7 +717,6 @@ const rightEdgeCursorPlugin = {
     ctx.restore();
     state.latestCutCursors = detailCursors;
     state.latestCutLabel = state.visibleSeries[index]?.label ?? "";
-    renderCutPreview(detailCursors, state.latestCutLabel);
     renderCutList(detailCursors, state.latestCutLabel);
   },
 };
@@ -1357,8 +1305,6 @@ function applyZoomSetting(zoom, align = "center") {
   }
 
   state.clickedIndex = null;
-  state.showCutList = false;
-  updateCutListPanel("");
   renderChart();
 }
 
@@ -1380,8 +1326,6 @@ function alignWindowToEnd() {
   const min = Math.max(0, lastIndex - span);
 
   state.clickedIndex = null;
-  state.showCutList = false;
-  updateCutListPanel("");
   state.chart.options.scales.x.min = min;
   state.chart.options.scales.x.max = lastIndex;
   state.chart.update("none");
@@ -1400,8 +1344,6 @@ async function loadData() {
 elements.citySelect.addEventListener("change", () => {
   state.selectedCode = elements.citySelect.value;
   state.clickedIndex = null;
-  state.showCutList = false;
-  updateCutListPanel("");
   applyZoomSetting(state.activePreset, "end");
 });
 elements.zoomButtons.forEach((button) => {
@@ -1411,13 +1353,7 @@ elements.alignEnd.addEventListener("click", alignWindowToEnd);
 elements.seasonalityToggle.addEventListener("change", () => {
   state.removeSeasonality = elements.seasonalityToggle.checked;
   state.clickedIndex = null;
-  state.showCutList = false;
-  updateCutListPanel("");
   renderChart();
-});
-elements.cutPreviewPanel.addEventListener("click", () => {
-  state.showCutList = true;
-  renderCutList(state.latestCutCursors, state.latestCutLabel);
 });
 elements.themeToggle.addEventListener("click", () => {
   document.body.classList.toggle("light");
