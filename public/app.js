@@ -6,6 +6,7 @@ const state = {
   visibleMode: "month",
   clickedIndex: null,
   activePreset: "2y",
+  removeSeasonality: false,
   rangeStart: null,
   rangeEnd: null,
   cutListHtml: "",
@@ -32,6 +33,7 @@ const elements = {
   currentStation: document.querySelector("#currentStation"),
   currentCode: document.querySelector("#currentCode"),
   windowLabel: document.querySelector("#windowLabel"),
+  seasonalityToggle: document.querySelector("#seasonalityToggle"),
   zoomButtons: document.querySelectorAll("[data-zoom]"),
   alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart"),
@@ -311,6 +313,26 @@ function valueForDatasetLabel(point, label) {
   if (label === "Max") return point.max;
   if (label === "Min") return point.min;
   return point.avg;
+}
+
+function displayMetric(point, metric) {
+  if (!state.removeSeasonality) return point[metric];
+  const trendKey = `${metric}DeseasonalizedTrend`;
+  if (Number.isFinite(point[trendKey])) return point[trendKey];
+  const deseasonalizedKey = `${metric}Deseasonalized`;
+  if (Number.isFinite(point[deseasonalizedKey])) return point[deseasonalizedKey];
+  return point[metric];
+}
+
+function displaySeriesValues(series) {
+  return series.map((point) => {
+    return {
+      ...point,
+      min: displayMetric(point, "min"),
+      avg: displayMetric(point, "avg"),
+      max: displayMetric(point, "max"),
+    };
+  });
 }
 
 function thresholdStarts(chart, threshold, targetLabel) {
@@ -1027,7 +1049,9 @@ function chartOptions() {
       y: {
         title: {
           display: true,
-          text: "Temperature (°C)",
+          text: state.removeSeasonality
+            ? "Température désaisonnalisée (°C)"
+            : "Température (°C)",
           color: mutedColor,
         },
         ticks: {
@@ -1087,13 +1111,16 @@ function renderChart() {
     selectedMonthSpan() <= 24 && city.dailySeries?.length ? "day" : "month";
   const displaySeries =
     state.visibleMode === "day" ? city.dailySeries : city.series;
+  const visibleSeries = state.removeSeasonality
+    ? displaySeriesValues(displaySeries)
+    : displaySeries;
   const selectedSeries = filteredSeries(city);
-  state.visibleSeries = displaySeries;
+  state.visibleSeries = visibleSeries;
   updateSummary(city, selectedSeries);
 
   const data = {
-    labels: displaySeries.map((point) => point.label),
-    datasets: cityDatasets(displaySeries),
+    labels: visibleSeries.map((point) => point.label),
+    datasets: cityDatasets(visibleSeries),
   };
 
   if (!state.chart) {
@@ -1219,6 +1246,13 @@ elements.zoomButtons.forEach((button) => {
   button.addEventListener("click", () => applyZoomSetting(button.dataset.zoom));
 });
 elements.alignEnd.addEventListener("click", alignWindowToEnd);
+elements.seasonalityToggle.addEventListener("change", () => {
+  state.removeSeasonality = elements.seasonalityToggle.checked;
+  state.clickedIndex = null;
+  state.showCutList = false;
+  updateCutListPanel("");
+  renderChart();
+});
 elements.cutPreviewPanel.addEventListener("click", () => {
   state.showCutList = true;
   renderCutList(state.latestCutCursors, state.latestCutLabel);

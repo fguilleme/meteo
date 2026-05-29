@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Meteo SYNOP France</title>
-  <link rel="stylesheet" href="/styles.css?v=max-cuts-only-20260529" />
+  <link rel="stylesheet" href="/styles.css?v=harmonic-seasonality-20260529" />
   <script src="/vendor/chart.umd.js"></script>
   <script src="/vendor/hammer.min.js"></script>
   <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -47,6 +47,10 @@
       <div class="window-status">
         <strong id="windowLabel">Derniere periode</strong>
       </div>
+      <label class="seasonality-toggle" for="seasonalityToggle">
+        <input id="seasonalityToggle" type="checkbox" />
+        <span>Sans saisonnalité</span>
+      </label>
       <div class="range-actions" aria-label="Raccourcis de plage">
         <button class="range-button" data-zoom="all" type="button">
           Tout
@@ -79,7 +83,7 @@
     <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
   </main>
 
-  <script src="/app.js?v=max-cuts-only-20260529"></script>
+  <script src="/app.js?v=harmonic-seasonality-20260529"></script>
 </body>
 
 </html>

@@ -259,6 +259,24 @@ h1 {
   font-size: 1rem;
 }
 
+.seasonality-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.seasonality-toggle input {
+  accent-color: var(--accent);
+}
+
 .range-button {
   min-height: 40px;
   padding: 0 12px;
