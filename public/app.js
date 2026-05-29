@@ -14,7 +14,7 @@ const state = {
   latestCutLabel: "",
   showCutList: false,
   touchStart: null,
-  touchIsVertical: false
+  touchIsVertical: false,
 };
 
 const colors = {
@@ -22,7 +22,7 @@ const colors = {
   avg: "#f7b267",
   max: "#ff6b6b",
   gridDark: "rgba(255,255,255,0.09)",
-  gridLight: "rgba(23,32,47,0.10)"
+  gridLight: "rgba(23,32,47,0.10)",
 };
 
 const elements = {
@@ -36,35 +36,35 @@ const elements = {
   alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart"),
   cutPreviewPanel: document.querySelector("#cutPreviewPanel"),
-  cutListPanel: document.querySelector("#cutListPanel")
+  cutListPanel: document.querySelector("#cutListPanel"),
 };
 
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", {
   day: "2-digit",
   month: "long",
-  year: "numeric"
+  year: "numeric",
 });
 
 const weekdayDateFormatter = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
   day: "2-digit",
   month: "long",
-  year: "numeric"
+  year: "numeric",
 });
 
 const monthFormatter = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
-  year: "numeric"
+  year: "numeric",
 });
 
 const shortDateFormatter = new Intl.DateTimeFormat("fr-FR", {
   day: "2-digit",
   month: "short",
-  year: "numeric"
+  year: "numeric",
 });
 
 const shortMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
-  month: "short"
+  month: "short",
 });
 
 function isLight() {
@@ -72,42 +72,58 @@ function isLight() {
 }
 
 function installChartTouchHandling() {
-  elements.canvas.addEventListener("touchstart", (event) => {
-    if (event.touches.length !== 1) {
+  elements.canvas.addEventListener(
+    "touchstart",
+    (event) => {
+      if (event.touches.length !== 1) {
+        state.touchStart = null;
+        state.touchIsVertical = false;
+        return;
+      }
+
+      const touch = event.touches[0];
+      state.touchStart = { x: touch.clientX, y: touch.clientY };
+      state.touchIsVertical = false;
+    },
+    { capture: true, passive: true },
+  );
+
+  elements.canvas.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!state.touchStart || event.touches.length !== 1) return;
+
+      const touch = event.touches[0];
+      const dx = Math.abs(touch.clientX - state.touchStart.x);
+      const dy = Math.abs(touch.clientY - state.touchStart.y);
+      if (!state.touchIsVertical && dy > dx * 1.2 && dy > 8) {
+        state.touchIsVertical = true;
+      }
+
+      if (state.touchIsVertical) {
+        event.stopImmediatePropagation();
+      }
+    },
+    { capture: true, passive: true },
+  );
+
+  elements.canvas.addEventListener(
+    "touchend",
+    () => {
       state.touchStart = null;
       state.touchIsVertical = false;
-      return;
-    }
+    },
+    { capture: true, passive: true },
+  );
 
-    const touch = event.touches[0];
-    state.touchStart = { x: touch.clientX, y: touch.clientY };
-    state.touchIsVertical = false;
-  }, { capture: true, passive: true });
-
-  elements.canvas.addEventListener("touchmove", (event) => {
-    if (!state.touchStart || event.touches.length !== 1) return;
-
-    const touch = event.touches[0];
-    const dx = Math.abs(touch.clientX - state.touchStart.x);
-    const dy = Math.abs(touch.clientY - state.touchStart.y);
-    if (!state.touchIsVertical && dy > dx * 1.2 && dy > 8) {
-      state.touchIsVertical = true;
-    }
-
-    if (state.touchIsVertical) {
-      event.stopImmediatePropagation();
-    }
-  }, { capture: true, passive: true });
-
-  elements.canvas.addEventListener("touchend", () => {
-    state.touchStart = null;
-    state.touchIsVertical = false;
-  }, { capture: true, passive: true });
-
-  elements.canvas.addEventListener("touchcancel", () => {
-    state.touchStart = null;
-    state.touchIsVertical = false;
-  }, { capture: true, passive: true });
+  elements.canvas.addEventListener(
+    "touchcancel",
+    () => {
+      state.touchStart = null;
+      state.touchIsVertical = false;
+    },
+    { capture: true, passive: true },
+  );
 }
 
 function formatDay(value) {
@@ -129,7 +145,10 @@ function formatValue(value) {
 }
 
 function getCity() {
-  return state.payload.cities.find((city) => city.code === state.selectedCode) || state.payload.cities[0];
+  return (
+    state.payload.cities.find((city) => city.code === state.selectedCode) ||
+    state.payload.cities[0]
+  );
 }
 
 function monthToNumber(label) {
@@ -177,9 +196,10 @@ function updateCutPreviewPanel(html) {
 
 function monthTitle(label) {
   const parts = label.split("-").map(Number);
-  const value = parts.length === 3
-    ? new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]))
-    : new Date(Date.UTC(parts[0], parts[1] - 1, 1));
+  const value =
+    parts.length === 3
+      ? new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]))
+      : new Date(Date.UTC(parts[0], parts[1] - 1, 1));
   const formatted = monthFormatter.format(value);
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 }
@@ -195,15 +215,19 @@ function shortDate(value) {
 
 function dateForPoint(datasetLabel, point) {
   if (!point) return "";
-  if (datasetLabel === "Max") return point.maxDate ? shortDate(point.maxDate) : longLabel(point.label);
-  if (datasetLabel === "Min") return point.minDate ? shortDate(point.minDate) : longLabel(point.label);
+  if (datasetLabel === "Max")
+    return point.maxDate ? shortDate(point.maxDate) : longLabel(point.label);
+  if (datasetLabel === "Min")
+    return point.minDate ? shortDate(point.minDate) : longLabel(point.label);
   return longLabel(point.label);
 }
 
 function dateValueForPoint(datasetLabel, point) {
   if (!point) return null;
-  if (datasetLabel === "Max" && point.maxDate) return new Date(point.maxDate).getTime();
-  if (datasetLabel === "Min" && point.minDate) return new Date(point.minDate).getTime();
+  if (datasetLabel === "Max" && point.maxDate)
+    return new Date(point.maxDate).getTime();
+  if (datasetLabel === "Min" && point.minDate)
+    return new Date(point.minDate).getTime();
 
   const parts = point.label.split("-").map(Number);
   if (parts.length === 3) return Date.UTC(parts[0], parts[1] - 1, parts[2], 12);
@@ -221,15 +245,23 @@ function interpolatedAxisTime(index, ratio) {
   const timeA = timeForLabel(state.visibleSeries[index]?.label);
   const timeB = timeForLabel(state.visibleSeries[index + 1]?.label);
   if (!Number.isFinite(timeA) || !Number.isFinite(timeB)) {
-    return timeForLabel(state.visibleSeries[ratio < 0.5 ? index : index + 1]?.label);
+    return timeForLabel(
+      state.visibleSeries[ratio < 0.5 ? index : index + 1]?.label,
+    );
   }
 
   return timeA + (timeB - timeA) * ratio;
 }
 
 function axisTimeAt(value) {
-  const low = Math.max(0, Math.min(state.visibleSeries.length - 1, Math.floor(value)));
-  const high = Math.max(0, Math.min(state.visibleSeries.length - 1, Math.ceil(value)));
+  const low = Math.max(
+    0,
+    Math.min(state.visibleSeries.length - 1, Math.floor(value)),
+  );
+  const high = Math.max(
+    0,
+    Math.min(state.visibleSeries.length - 1, Math.ceil(value)),
+  );
   if (low === high) return timeForLabel(state.visibleSeries[low]?.label);
 
   const timeLow = timeForLabel(state.visibleSeries[low]?.label);
@@ -242,13 +274,35 @@ function rightmostVisibleIndex(chart) {
   const labels = chart.data.labels;
   if (!labels.length) return -1;
 
-  const max = Number.isFinite(chart.scales.x.max) ? chart.scales.x.max : labels.length - 1;
+  const max = Number.isFinite(chart.scales.x.max)
+    ? chart.scales.x.max
+    : labels.length - 1;
   return Math.max(0, Math.min(labels.length - 1, Math.floor(max)));
+}
+
+function rightmostVisibleValue(chart) {
+  const lastIndex = chart.data.labels.length - 1;
+  const max = Number.isFinite(chart.scales.x.max)
+    ? chart.scales.x.max
+    : lastIndex;
+  return Math.max(0, Math.min(lastIndex, max));
+}
+
+function interpolatedDataValue(values, xValue) {
+  const low = Math.max(0, Math.min(values.length - 1, Math.floor(xValue)));
+  const high = Math.max(0, Math.min(values.length - 1, Math.ceil(xValue)));
+  const lowValue = values[low];
+  const highValue = values[high];
+  if (!Number.isFinite(lowValue)) return highValue;
+  if (!Number.isFinite(highValue) || low === high) return lowValue;
+  return lowValue + (highValue - lowValue) * (xValue - low);
 }
 
 function visibleMonthSpan(chart) {
   const min = Number.isFinite(chart.scales.x.min) ? chart.scales.x.min : 0;
-  const max = Number.isFinite(chart.scales.x.max) ? chart.scales.x.max : chart.data.labels.length - 1;
+  const max = Number.isFinite(chart.scales.x.max)
+    ? chart.scales.x.max
+    : chart.data.labels.length - 1;
   if (state.visibleMode === "day") return (max - min) / 30.5;
   return max - min;
 }
@@ -259,86 +313,123 @@ function valueForDatasetLabel(point, label) {
   return point.avg;
 }
 
-function horizontalIntersections(chart, yValue, targetLabel) {
+function thresholdStarts(chart, threshold, targetLabel) {
   const xScale = chart.scales.x;
+  const yScale = chart.scales.y;
   const visibleMin = Number.isFinite(xScale.min) ? xScale.min : 0;
-  const visibleMax = Number.isFinite(xScale.max) ? xScale.max : chart.data.labels.length - 1;
-  const visibleStartTime = axisTimeAt(visibleMin);
-  const visibleEndTime = axisTimeAt(visibleMax);
-  const dailySeries = getCity().dailySeries;
-  const intersections = [];
+  const visibleMax = Number.isFinite(xScale.max)
+    ? xScale.max
+    : chart.data.labels.length - 1;
+  const starts = [];
+  const minIndex = Math.max(0, Math.floor(visibleMin) - 1);
+  const maxIndex = Math.min(
+    chart.data.labels.length - 1,
+    Math.ceil(visibleMax) + 1,
+  );
 
-  if (dailySeries?.length && Number.isFinite(visibleStartTime) && Number.isFinite(visibleEndTime)) {
-    const color = targetLabel === "Max" ? colors.max : colors.min;
-    for (let index = 0; index < dailySeries.length - 1; index += 1) {
-      const pointA = dailySeries[index];
-      const pointB = dailySeries[index + 1];
-      const timeA = timeForLabel(pointA.label);
-      const timeB = timeForLabel(pointB.label);
-      if (timeB < visibleStartTime || timeA > visibleEndTime) continue;
+  const dataset = chart.data.datasets.find(
+    (item) => item.label === targetLabel,
+  );
+  if (!dataset) return starts;
 
-      const yA = valueForDatasetLabel(pointA, targetLabel);
-      const yB = valueForDatasetLabel(pointB, targetLabel);
-      if (!Number.isFinite(yA) || !Number.isFinite(yB) || yA === yB) continue;
+  const values = dataset.data;
+  const allowedBelowCount = state.visibleMode === "day" ? 14 : 1;
+  let inEpisode =
+    minIndex > 0 &&
+    Number.isFinite(values[minIndex - 1]) &&
+    values[minIndex - 1] >= threshold;
+  let belowCount = 0;
+  for (let index = minIndex; index <= maxIndex; index += 1) {
+    const value = values[index];
+    if (!Number.isFinite(value)) continue;
 
-      const min = Math.min(yA, yB);
-      const max = Math.max(yA, yB);
-      if (yValue < min || yValue > max) continue;
-
-      const ratio = (yValue - yA) / (yB - yA);
-      const time = timeA + (timeB - timeA) * ratio;
-      if (time < visibleStartTime || time > visibleEndTime) continue;
-      const x = chart.chartArea.left
-        + ((time - visibleStartTime) / (visibleEndTime - visibleStartTime)) * (chart.chartArea.right - chart.chartArea.left);
-
-      intersections.push({
-        x,
-        time,
-        color,
-        datasetLabel: targetLabel,
-        formattedValue: formatValue(yValue),
-        value: yValue,
-        date: formatDay(new Date(time)),
-        weekdayDate: formatWeekday(new Date(time))
-      });
+    const isAbove = value >= threshold;
+    if (isAbove) {
+      if (!inEpisode) {
+        const x = xScale.getPixelForValue(index);
+        const y = yScale.getPixelForValue(value);
+        const point = state.visibleSeries[index];
+        const time =
+          dateValueForPoint(targetLabel, point) || timeForLabel(point?.label);
+        if (
+          x >= chart.chartArea.left &&
+          x <= chart.chartArea.right &&
+          y >= chart.chartArea.top &&
+          y <= chart.chartArea.bottom
+        ) {
+          starts.push({
+            x,
+            y,
+            time,
+            color: dataset.borderColor,
+            datasetLabel: dataset.label,
+            formattedValue: formatValue(value),
+            value,
+            date: formatDay(new Date(time)),
+            weekdayDate: formatWeekday(new Date(time)),
+          });
+        }
+      }
+      inEpisode = true;
+      belowCount = 0;
+      continue;
     }
-    return intersections.sort((a, b) => a.x - b.x);
+
+    if (!inEpisode) continue;
+    belowCount += 1;
+    if (belowCount > allowedBelowCount) {
+      inEpisode = false;
+      belowCount = 0;
+    }
   }
 
+  return starts.sort((a, b) => a.x - b.x);
+}
+
+function thresholdIntersections(chart, threshold, targetLabel) {
+  const xScale = chart.scales.x;
+  const yScale = chart.scales.y;
+  const visibleMin = Number.isFinite(xScale.min) ? xScale.min : 0;
+  const visibleMax = Number.isFinite(xScale.max)
+    ? xScale.max
+    : chart.data.labels.length - 1;
   const minIndex = Math.max(0, Math.floor(visibleMin) - 1);
-  const maxIndex = Math.min(chart.data.labels.length - 1, Math.ceil(visibleMax) + 1);
-  chart.data.datasets
-    .filter((dataset) => !targetLabel || dataset.label === targetLabel)
-    .forEach((dataset) => {
-      const values = dataset.data;
-      for (let index = minIndex; index < maxIndex; index += 1) {
-        const yA = values[index];
-        const yB = values[index + 1];
-        if (!Number.isFinite(yA) || !Number.isFinite(yB) || yA === yB) continue;
+  const maxIndex = Math.min(
+    chart.data.labels.length - 1,
+    Math.ceil(visibleMax) + 1,
+  );
+  const dataset = chart.data.datasets.find(
+    (item) => item.label === targetLabel,
+  );
+  if (!dataset) return [];
 
-        const min = Math.min(yA, yB);
-        const max = Math.max(yA, yB);
-        if (yValue < min || yValue > max) continue;
+  const intersections = [];
+  const values = dataset.data;
+  for (let index = minIndex; index < maxIndex; index += 1) {
+    const yA = values[index];
+    const yB = values[index + 1];
+    if (!Number.isFinite(yA) || !Number.isFinite(yB) || yA === yB) continue;
 
-        const ratio = (yValue - yA) / (yB - yA);
-        const x = xScale.getPixelForValue(index + ratio);
-        if (x < chart.chartArea.left || x > chart.chartArea.right) continue;
-        const time = interpolatedAxisTime(index, ratio);
+    const min = Math.min(yA, yB);
+    const max = Math.max(yA, yB);
+    if (threshold < min || threshold > max) continue;
 
-        intersections.push({
-          x,
-          time,
-          color: dataset.borderColor,
-          datasetLabel: dataset.label,
-          formattedValue: formatValue(yValue),
-          value: yValue,
-          date: formatDay(new Date(time)),
-          weekdayDate: formatWeekday(new Date(time))
-        });
-      }
-    });
+    const ratio = (threshold - yA) / (yB - yA);
+    const x = xScale.getPixelForValue(index + ratio);
+    const y = yScale.getPixelForValue(threshold);
+    if (
+      x < chart.chartArea.left ||
+      x > chart.chartArea.right ||
+      y < chart.chartArea.top ||
+      y > chart.chartArea.bottom
+    ) {
+      continue;
+    }
 
-  return intersections.sort((a, b) => a.x - b.x);
+    intersections.push({ x, y, color: dataset.borderColor });
+  }
+
+  return intersections;
 }
 
 function renderCutList(cursors, activeLabel) {
@@ -347,30 +438,36 @@ function renderCutList(cursors, activeLabel) {
     return;
   }
 
-  const sections = cursors.map((cursor) => {
-    const rows = sortedCutRows(cursor);
-    const body = rows.length
-      ? rows.map((row) => `
+  const sections = cursors
+    .map((cursor) => {
+      const rows = sortedCutRows(cursor);
+      const body = rows.length
+        ? rows
+          .map(
+            (row) => `
           <li class="cut-list-row">
             <span class="cut-dot" style="--cut-color: ${escapeHtml(row.color)}"></span>
             <span>${escapeHtml(row.datasetLabel)} ${escapeHtml(row.formattedValue)}</span>
             <span>${escapeHtml(row.weekdayDate)}</span>
           </li>
-        `).join("")
-      : `<li class="cut-list-empty">Aucune coupe visible</li>`;
+        `,
+          )
+          .join("")
+        : `<li class="cut-list-empty">Aucune coupe visible</li>`;
 
-    return `
+      return `
       <article class="cut-list-section">
         <h2 style="--cut-color: ${escapeHtml(cursor.color)}">${escapeHtml(cursor.label)}</h2>
         <ul>${body}</ul>
       </article>
     `;
-  }).join("");
+    })
+    .join("");
 
   updateCutListPanel(`
     <div class="cut-list-header">
-      <span>Liste complete des coupes</span>
-      <strong>${escapeHtml(longLabel(activeLabel))}</strong>
+      <span>Premiers jours des épisodes chauds</span>
+      <span>${escapeHtml(longLabel(activeLabel))}</span>
     </div>
     <div class="cut-list-grid">${sections}</div>
   `);
@@ -380,37 +477,45 @@ function sortedCutRows(cursor) {
   return cursor.intersections
     .filter((intersection) => Number.isFinite(intersection.time))
     .sort((a, b) => {
-      const distance = Math.abs(a.time - cursor.referenceTime) - Math.abs(b.time - cursor.referenceTime);
+      const distance =
+        Math.abs(a.time - cursor.referenceTime) -
+        Math.abs(b.time - cursor.referenceTime);
       return distance || b.time - a.time;
     });
 }
 
 function renderCutPreview(cursors, activeLabel) {
-  const sections = cursors.map((cursor) => {
-    const rows = sortedCutRows(cursor);
-    const shownRows = rows.slice(0, 4);
-    const hiddenCount = Math.max(0, rows.length - shownRows.length);
-    const body = shownRows.length
-      ? shownRows.map((row) => `
+  const sections = cursors
+    .map((cursor) => {
+      const rows = sortedCutRows(cursor);
+      const shownRows = rows.slice(0, 4);
+      const hiddenCount = Math.max(0, rows.length - shownRows.length);
+      const body = shownRows.length
+        ? shownRows
+          .map(
+            (row) => `
           <li>
             <span class="cut-dot" style="--cut-color: ${escapeHtml(row.color)}"></span>
             <span>${escapeHtml(row.date)}</span>
           </li>
-        `).join("")
-      : `<li class="cut-list-empty">Aucune coupe visible</li>`;
-    const more = hiddenCount > 0 ? `<p>+ ${hiddenCount} autres</p>` : "";
+        `,
+          )
+          .join("")
+        : `<li class="cut-list-empty">Aucune coupe visible</li>`;
+      const more = hiddenCount > 0 ? `<p>+ ${hiddenCount} autres</p>` : "";
 
-    return `
+      return `
       <section class="cut-preview-section">
         <h2 style="--cut-color: ${escapeHtml(cursor.color)}">${escapeHtml(cursor.label)}</h2>
         <ul>${body}</ul>
         ${more}
       </section>
     `;
-  }).join("");
+    })
+    .join("");
 
   updateCutPreviewPanel(`
-    <span class="cut-preview-title">Coupes proches de ${escapeHtml(longLabel(activeLabel))}</span>
+    <span class="cut-preview-title">Épisodes chauds proches de<br/> ${escapeHtml(longLabel(activeLabel))}</span>
     <div class="cut-preview-grid">${sections}</div>
   `);
 }
@@ -426,13 +531,14 @@ const rightEdgeCursorPlugin = {
     }
 
     const { ctx, chartArea, scales } = chart;
-    const x = scales.x.getPixelForValue(index);
+    const rightXValue = rightmostVisibleValue(chart);
+    const x = scales.x.getPixelForValue(rightXValue);
     const cursors = chart.data.datasets
       .filter((dataset) => dataset.label === "Max" || dataset.label === "Min")
       .map((dataset) => ({
         label: dataset.label,
         color: dataset.borderColor,
-        value: dataset.data[index]
+        value: interpolatedDataValue(dataset.data, rightXValue),
       }))
       .filter((cursor) => Number.isFinite(cursor.value));
 
@@ -441,9 +547,17 @@ const rightEdgeCursorPlugin = {
     cursors.forEach((cursor) => {
       const y = scales.y.getPixelForValue(cursor.value);
       if (y < chartArea.top || y > chartArea.bottom) return;
-      const intersections = horizontalIntersections(chart, cursor.value, cursor.label);
-      const referenceTime = axisTimeAt(Number.isFinite(scales.x.max) ? scales.x.max : index);
-      detailCursors.push({ ...cursor, intersections, referenceTime });
+      const showCutMarkers = cursor.label === "Max";
+      const intersections = showCutMarkers
+        ? thresholdStarts(chart, cursor.value, cursor.label)
+        : [];
+      const crossingMarkers = showCutMarkers
+        ? thresholdIntersections(chart, cursor.value, cursor.label)
+        : [];
+      const referenceTime = axisTimeAt(rightXValue);
+      if (showCutMarkers) {
+        detailCursors.push({ ...cursor, intersections, referenceTime });
+      }
 
       ctx.lineWidth = 1;
       ctx.strokeStyle = cursor.color;
@@ -461,11 +575,11 @@ const rightEdgeCursorPlugin = {
       ctx.arc(x, y, 4, 0, Math.PI * 2);
       ctx.fill();
 
-      intersections.forEach((intersection) => {
-        ctx.fillStyle = intersection.color;
+      crossingMarkers.forEach((marker) => {
+        ctx.fillStyle = marker.color;
         ctx.globalAlpha = 0.78;
         ctx.beginPath();
-        ctx.arc(intersection.x, y, 2.6, 0, Math.PI * 2);
+        ctx.arc(marker.x, marker.y, 2.6, 0, Math.PI * 2);
         ctx.fill();
       });
       ctx.globalAlpha = 1;
@@ -476,7 +590,7 @@ const rightEdgeCursorPlugin = {
     state.latestCutLabel = state.visibleSeries[index]?.label ?? "";
     renderCutPreview(detailCursors, state.latestCutLabel);
     renderCutList(detailCursors, state.latestCutLabel);
-  }
+  },
 };
 
 const clickTooltipPlugin = {
@@ -486,7 +600,11 @@ const clickTooltipPlugin = {
     if (event.type !== "click") return;
 
     const { left, right, top, bottom } = chart.chartArea;
-    const inChart = event.x >= left && event.x <= right && event.y >= top && event.y <= bottom;
+    const inChart =
+      event.x >= left &&
+      event.x <= right &&
+      event.y >= top &&
+      event.y <= bottom;
     if (!inChart) {
       state.clickedIndex = null;
       args.changed = true;
@@ -494,26 +612,46 @@ const clickTooltipPlugin = {
     }
 
     const rawIndex = chart.scales.x.getValueForPixel(event.x);
-    state.clickedIndex = Math.max(0, Math.min(chart.data.labels.length - 1, Math.round(rawIndex)));
+    state.clickedIndex = Math.max(
+      0,
+      Math.min(chart.data.labels.length - 1, Math.round(rawIndex)),
+    );
     args.changed = true;
   },
   afterDraw(chart) {
     const index = state.clickedIndex;
-    if (!Number.isInteger(index) || index < 0 || index >= state.visibleSeries.length) return;
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= state.visibleSeries.length
+    )
+      return;
 
     const { ctx, chartArea, scales } = chart;
     const point = state.visibleSeries[index];
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
-    const panelColor = getComputedStyle(document.documentElement).getPropertyValue("--panel").trim();
-    const lineColor = isLight() ? "rgba(23, 32, 47, 0.55)" : "rgba(243, 246, 251, 0.62)";
+    const textColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--text")
+      .trim();
+    const panelColor = getComputedStyle(document.documentElement)
+      .getPropertyValue("--panel")
+      .trim();
+    const lineColor = isLight()
+      ? "rgba(23, 32, 47, 0.55)"
+      : "rgba(243, 246, 251, 0.62)";
     const x = scales.x.getPixelForValue(index);
 
     if (x < chartArea.left || x > chartArea.right) return;
 
     const rows = [
-      { color: colors.max, text: `Max ${formatValue(point.max)} - ${formatPointDate(point, "maxDate")}` },
+      {
+        color: colors.max,
+        text: `Max ${formatValue(point.max)} - ${formatPointDate(point, "maxDate")}`,
+      },
       { color: colors.avg, text: `Moy ${formatValue(point.avg)}` },
-      { color: colors.min, text: `Min ${formatValue(point.min)} - ${formatPointDate(point, "minDate")}` }
+      {
+        color: colors.min,
+        text: `Min ${formatValue(point.min)} - ${formatPointDate(point, "minDate")}`,
+      },
     ];
 
     ctx.save();
@@ -530,12 +668,15 @@ const clickTooltipPlugin = {
     const title = longLabel(point.label);
     const titleWidth = ctx.measureText(title).width;
     ctx.font = "700 11px system-ui, sans-serif";
-    const rowWidth = Math.max(...rows.map((row) => ctx.measureText(row.text).width));
+    const rowWidth = Math.max(
+      ...rows.map((row) => ctx.measureText(row.text).width),
+    );
     const width = Math.max(titleWidth, rowWidth) + 34;
     const height = 30 + rows.length * 16;
-    const boxX = x < (chartArea.left + chartArea.right) / 2
-      ? Math.min(x + 14, chartArea.right - width)
-      : Math.max(x - width - 14, chartArea.left);
+    const boxX =
+      x < (chartArea.left + chartArea.right) / 2
+        ? Math.min(x + 14, chartArea.right - width)
+        : Math.max(x - width - 14, chartArea.left);
     const boxY = chartArea.top + 14;
 
     roundedRect(ctx, boxX, boxY, width, height, 8);
@@ -562,7 +703,7 @@ const clickTooltipPlugin = {
     });
 
     ctx.restore();
-  }
+  },
 };
 
 const alternatingYearBandsPlugin = {
@@ -589,8 +730,15 @@ const alternatingYearBandsPlugin = {
         if (bandIndex % 2 === 0) {
           const startX = xScale.getPixelForValue(startIndex - 0.5);
           const endX = xScale.getPixelForValue(index - 0.5);
-          ctx.fillStyle = isLight() ? "rgba(8, 127, 140, 0.045)" : "rgba(54, 209, 196, 0.035)";
-          ctx.fillRect(startX, chartArea.top, endX - startX, chartArea.bottom - chartArea.top);
+          ctx.fillStyle = isLight()
+            ? "rgba(8, 127, 140, 0.045)"
+            : "rgba(54, 209, 196, 0.035)";
+          ctx.fillRect(
+            startX,
+            chartArea.top,
+            endX - startX,
+            chartArea.bottom - chartArea.top,
+          );
         }
         activeYear = year;
         startIndex = index;
@@ -598,17 +746,24 @@ const alternatingYearBandsPlugin = {
       }
     }
     ctx.restore();
-  }
+  },
 };
 
-Chart.register(alternatingYearBandsPlugin, rightEdgeCursorPlugin, clickTooltipPlugin);
+Chart.register(
+  alternatingYearBandsPlugin,
+  rightEdgeCursorPlugin,
+  clickTooltipPlugin,
+);
 
 function clampRangeToCity(city) {
   const first = city.series[0]?.label;
   const last = city.series.at(-1)?.label;
   if (!first || !last) return;
 
-  if (!state.rangeStart || monthToNumber(state.rangeStart) < monthToNumber(first)) {
+  if (
+    !state.rangeStart ||
+    monthToNumber(state.rangeStart) < monthToNumber(first)
+  ) {
     state.rangeStart = first;
   }
   if (!state.rangeEnd || monthToNumber(state.rangeEnd) > monthToNumber(last)) {
@@ -664,12 +819,14 @@ function monthLabelFromNumber(value) {
 }
 
 function xMinForSeries(series) {
-  if (state.visibleMode === "day") return lowerBoundIndex(series, `${state.rangeStart}-01`);
+  if (state.visibleMode === "day")
+    return lowerBoundIndex(series, `${state.rangeStart}-01`);
   return labelIndex(series, state.rangeStart, 0);
 }
 
 function xMaxForSeries(series) {
-  if (state.visibleMode === "day") return lowerBoundIndex(series, endOfMonthLabel(state.rangeEnd));
+  if (state.visibleMode === "day")
+    return lowerBoundIndex(series, endOfMonthLabel(state.rangeEnd));
   return labelIndex(series, state.rangeEnd, series.length - 1);
 }
 
@@ -699,7 +856,10 @@ function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
     if (span <= 45) {
       return (index - visibleStart) % dayTickInterval(span) === 0;
     }
-    return date.getUTCDate() === 1 && date.getUTCMonth() % dayTickInterval(span) === 0;
+    return (
+      date.getUTCDate() === 1 &&
+      date.getUTCMonth() % dayTickInterval(span) === 0
+    );
   }
 
   const [year, month] = label.split("-").map(Number);
@@ -711,11 +871,16 @@ function axisTickLabel(label, index, span, visibleStart) {
   if (state.visibleMode === "day") {
     const date = new Date(`${label}T00:00:00Z`);
     if (span <= 45) {
-      return new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" }).format(date);
+      return new Intl.DateTimeFormat("fr-FR", {
+        day: "2-digit",
+        month: "short",
+      }).format(date);
     }
 
     const month = shortMonthFormatter.format(date).replace(".", "");
-    return date.getUTCMonth() === 0 || index === visibleStart ? `${month} ${date.getUTCFullYear()}` : month;
+    return date.getUTCMonth() === 0 || index === visibleStart
+      ? `${month} ${date.getUTCFullYear()}`
+      : month;
   }
 
   const [year, month] = label.split("-").map(Number);
@@ -723,32 +888,38 @@ function axisTickLabel(label, index, span, visibleStart) {
     const monthName = shortMonthFormatter
       .format(new Date(Date.UTC(year, month - 1, 1)))
       .replace(".", "");
-    return month === 1 || index === visibleStart ? `${monthName} ${year}` : monthName;
+    return month === 1 || index === visibleStart
+      ? `${monthName} ${year}`
+      : monthName;
   }
   return String(year);
 }
 
 function chartOptions() {
-  const textColor = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
-  const mutedColor = getComputedStyle(document.documentElement).getPropertyValue("--muted").trim();
+  const textColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--text")
+    .trim();
+  const mutedColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--muted")
+    .trim();
   return {
     responsive: true,
     maintainAspectRatio: false,
     animation: {
       duration: 850,
-      easing: "easeOutQuart"
+      easing: "easeOutQuart",
     },
     interaction: {
       mode: "index",
-      intersect: false
+      intersect: false,
     },
     plugins: {
       legend: {
         labels: {
           color: textColor,
           boxWidth: 12,
-          usePointStyle: true
-        }
+          usePointStyle: true,
+        },
       },
       tooltip: {
         enabled: false,
@@ -771,34 +942,34 @@ function chartOptions() {
               return `Max ${value} - ${formatDay(point.maxDate)}`;
             }
             return `Moy ${value}`;
-          }
-        }
+          },
+        },
       },
       zoom: {
         limits: {
           x: { min: 0, max: Math.max(0, state.visibleSeries.length - 1) },
-          y: { min: "original", max: "original" }
+          y: { min: "original", max: "original" },
         },
         pan: {
           enabled: true,
           mode: "x",
           threshold: 4,
-          modifierKey: null
+          modifierKey: null,
         },
         zoom: {
           wheel: {
             enabled: true,
-            speed: 0.08
+            speed: 0.08,
           },
           pinch: {
-            enabled: true
+            enabled: true,
           },
           drag: {
-            enabled: false
+            enabled: false,
           },
-          mode: "x"
-        }
-      }
+          mode: "x",
+        },
+      },
     },
     scales: {
       x: {
@@ -812,15 +983,23 @@ function chartOptions() {
             const labels = this.chart.data.labels;
             const label = this.getLabelForValue(value);
             const lastIndex = labels.length - 1;
-            const visibleStart = Math.max(0, Math.ceil(this.chart.scales.x.min ?? 0));
-            const visibleEnd = Math.min(lastIndex, Math.floor(this.chart.scales.x.max ?? lastIndex));
+            const visibleStart = Math.max(
+              0,
+              Math.ceil(this.chart.scales.x.min ?? 0),
+            );
+            const visibleEnd = Math.min(
+              lastIndex,
+              Math.floor(this.chart.scales.x.max ?? lastIndex),
+            );
             const span = Math.max(1, visibleEnd - visibleStart);
 
-            if (shouldShowAxisTick(label, value, span, visibleStart, visibleEnd)) {
+            if (
+              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd)
+            ) {
               return axisTickLabel(label, value, span, visibleStart);
             }
             return "";
-          }
+          },
         },
         grid: {
           color(context) {
@@ -828,30 +1007,38 @@ function chartOptions() {
             const value = context.tick.value;
             const lastIndex = labels.length - 1;
             const label = labels[value];
-            const visibleStart = Math.max(0, Math.ceil(context.chart.scales.x.min ?? 0));
-            const visibleEnd = Math.min(lastIndex, Math.floor(context.chart.scales.x.max ?? lastIndex));
+            const visibleStart = Math.max(
+              0,
+              Math.ceil(context.chart.scales.x.min ?? 0),
+            );
+            const visibleEnd = Math.min(
+              lastIndex,
+              Math.floor(context.chart.scales.x.max ?? lastIndex),
+            );
             const span = Math.max(1, visibleEnd - visibleStart);
-            const visibleTick = label && shouldShowAxisTick(label, value, span, visibleStart, visibleEnd);
+            const visibleTick =
+              label &&
+              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd);
             if (!visibleTick) return "rgba(0, 0, 0, 0)";
             return isLight() ? colors.gridLight : colors.gridDark;
-          }
-        }
+          },
+        },
       },
       y: {
         title: {
           display: true,
           text: "Temperature (°C)",
-          color: mutedColor
+          color: mutedColor,
         },
         ticks: {
           color: mutedColor,
-          callback: (value) => `${value} °C`
+          callback: (value) => `${value} °C`,
         },
         grid: {
-          color: isLight() ? colors.gridLight : colors.gridDark
-        }
-      }
-    }
+          color: isLight() ? colors.gridLight : colors.gridDark,
+        },
+      },
+    },
   };
 }
 
@@ -864,7 +1051,7 @@ function cityDatasets(series) {
       backgroundColor: "rgba(255, 107, 107, 0.14)",
       borderWidth: 2,
       pointRadius: 0,
-      tension: 0.28
+      tension: 0.28,
     },
     {
       label: "Moy",
@@ -873,7 +1060,7 @@ function cityDatasets(series) {
       backgroundColor: "rgba(247, 178, 103, 0.18)",
       borderWidth: 3,
       pointRadius: 0,
-      tension: 0.28
+      tension: 0.28,
     },
     {
       label: "Min",
@@ -882,8 +1069,8 @@ function cityDatasets(series) {
       backgroundColor: "rgba(54, 209, 196, 0.16)",
       borderWidth: 2,
       pointRadius: 0,
-      tension: 0.28
-    }
+      tension: 0.28,
+    },
   ];
 }
 
@@ -896,22 +1083,24 @@ function updateSummary(city, series) {
 function renderChart() {
   const city = getCity();
   clampRangeToCity(city);
-  state.visibleMode = selectedMonthSpan() <= 24 && city.dailySeries?.length ? "day" : "month";
-  const displaySeries = state.visibleMode === "day" ? city.dailySeries : city.series;
+  state.visibleMode =
+    selectedMonthSpan() <= 24 && city.dailySeries?.length ? "day" : "month";
+  const displaySeries =
+    state.visibleMode === "day" ? city.dailySeries : city.series;
   const selectedSeries = filteredSeries(city);
   state.visibleSeries = displaySeries;
   updateSummary(city, selectedSeries);
 
   const data = {
     labels: displaySeries.map((point) => point.label),
-    datasets: cityDatasets(displaySeries)
+    datasets: cityDatasets(displaySeries),
   };
 
   if (!state.chart) {
     state.chart = new Chart(elements.canvas, {
       type: "line",
       data,
-      options: chartOptions()
+      options: chartOptions(),
     });
     return;
   }
@@ -966,8 +1155,12 @@ function applyZoomSetting(zoom, align = "center") {
     if (align === "end") {
       endNumber = lastNumber;
     } else {
-      const currentStart = monthToNumber(state.rangeStart || city.series[0].label);
-      const currentEnd = monthToNumber(state.rangeEnd || city.series.at(-1).label);
+      const currentStart = monthToNumber(
+        state.rangeStart || city.series[0].label,
+      );
+      const currentEnd = monthToNumber(
+        state.rangeEnd || city.series.at(-1).label,
+      );
       const center = Math.round((currentStart + currentEnd) / 2);
       endNumber = center + Math.floor(span / 2);
     }
@@ -988,8 +1181,12 @@ function alignWindowToEnd() {
 
   const xScale = state.chart.scales.x;
   const lastIndex = state.visibleSeries.length - 1;
-  const currentMin = Number.isFinite(xScale.min) ? xScale.min : xMinForSeries(state.visibleSeries);
-  const currentMax = Number.isFinite(xScale.max) ? xScale.max : xMaxForSeries(state.visibleSeries);
+  const currentMin = Number.isFinite(xScale.min)
+    ? xScale.min
+    : xMinForSeries(state.visibleSeries);
+  const currentMax = Number.isFinite(xScale.max)
+    ? xScale.max
+    : xMaxForSeries(state.visibleSeries);
   const span = Math.max(1, currentMax - currentMin);
   const min = Math.max(0, lastIndex - span);
 
@@ -1002,7 +1199,9 @@ function alignWindowToEnd() {
 }
 
 async function loadData() {
-  const response = await fetch(`/api/temperatures?v=${Date.now()}`, { cache: "no-store" });
+  const response = await fetch(`/api/temperatures?v=${Date.now()}`, {
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error("Impossible de charger les donnees");
   state.payload = await response.json();
   renderCitySelect();

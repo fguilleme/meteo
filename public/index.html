@@ -1,68 +1,85 @@
 <!doctype html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Meteo SYNOP France</title>
-    <link rel="stylesheet" href="/styles.css?v=compact-preview-phone-20260528">
-    <script src="/vendor/chart.umd.js"></script>
-    <script src="/vendor/hammer.min.js"></script>
-    <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
-  </head>
-  <body>
-    <main class="app-shell">
-      <section class="hero">
-        <div>
-          <p class="eyebrow">SYNOP France 1996-2026</p>
-          <h1>Temperatures mensuelles des principales villes</h1>
-        </div>
-        <div class="actions">
-          <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">◐</button>
-        </div>
-      </section>
 
-      <section class="summary" aria-live="polite">
-        <div class="station-summary">
-          <div class="station-identity">
-            <span>Ville / Station / Code</span>
-            <strong>
-              <span id="currentCity">Chargement</span>
-              <span class="summary-separator">/</span>
-              <span id="currentStation">-</span>
-              <span class="summary-separator">/</span>
-              <span id="currentCode">-</span>
-            </strong>
-          </div>
-          <label class="city-select-label" for="citySelect">
-            <span>Ville</span>
-            <select id="citySelect"></select>
-          </label>
-        </div>
-      </section>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meteo SYNOP France</title>
+  <link rel="stylesheet" href="/styles.css?v=max-cuts-only-20260529" />
+  <script src="/vendor/chart.umd.js"></script>
+  <script src="/vendor/hammer.min.js"></script>
+  <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
+</head>
 
-      <section class="range-panel" aria-label="Fenetre affichee">
-        <div class="window-status">
-          <span>Fenetre</span>
-          <strong id="windowLabel">Derniere periode</strong>
-        </div>
-        <div class="range-actions" aria-label="Raccourcis de plage">
-          <button class="range-button" data-zoom="all" type="button">Tout</button>
-          <button class="range-button" data-zoom="10y" type="button">10 ans</button>
-          <button class="range-button" data-zoom="5y" type="button">5 ans</button>
-          <button class="range-button" data-zoom="2y" type="button">2 ans</button>
-          <button class="range-button" data-zoom="1y" type="button">1 an</button>
-          <button class="range-button" data-zoom="6m" type="button">6 mois</button>
-          <button class="range-button align-end-button" id="alignEnd" type="button">Fin</button>
-        </div>
-      </section>
+<body>
+  <main class="app-shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">SYNOP France 1996-2026</p>
+        <h2>Temperatures mensuelles des principales villes</h2>
+      </div>
+      <div class="actions">
+        <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">
+          ◐
+        </button>
+      </div>
+    </section>
 
-      <section class="chart-panel">
-        <canvas id="temperatureChart"></canvas>
-        <button class="cut-preview-panel" id="cutPreviewPanel" type="button" hidden></button>
-      </section>
-      <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
-    </main>
+    <section class="summary" aria-live="polite">
+      <div class="station-summary">
+        <label class="city-select-label" for="citySelect">
+          <select id="citySelect"></select>
+        </label>
+        </span>
+        <div class="station-identity">
+          <strong>
+            <span id="currentCity">Chargement</span>
+            <span class="summary-separator"> STATION</span>
+            <span id="currentStation">-</span>
+            <span class="summary-separator">CODE</span>
+            <span id="currentCode">-</span>
+          </strong>
+        </div>
+      </div>
+    </section>
 
-    <script src="/app.js?v=compact-preview-phone-20260528"></script>
-  </body>
+    <section class="range-panel" aria-label="Fenetre affichee">
+      <div class="window-status">
+        <strong id="windowLabel">Derniere periode</strong>
+      </div>
+      <div class="range-actions" aria-label="Raccourcis de plage">
+        <button class="range-button" data-zoom="all" type="button">
+          Tout
+        </button>
+        <button class="range-button" data-zoom="10y" type="button">
+          10 ans
+        </button>
+        <button class="range-button" data-zoom="5y" type="button">
+          5 ans
+        </button>
+        <button class="range-button" data-zoom="2y" type="button">
+          2 ans
+        </button>
+        <button class="range-button" data-zoom="1y" type="button">
+          1 an
+        </button>
+        <button class="range-button" data-zoom="6m" type="button">
+          6 mois
+        </button>
+        <button class="range-button align-end-button" id="alignEnd" type="button">
+          Fin
+        </button>
+      </div>
+    </section>
+
+    <section class="chart-panel">
+      <canvas id="temperatureChart"></canvas>
+      <button class="cut-preview-panel" id="cutPreviewPanel" type="button" hidden></button>
+    </section>
+    <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
+  </main>
+
+  <script src="/app.js?v=max-cuts-only-20260529"></script>
+</body>
+
 </html>
