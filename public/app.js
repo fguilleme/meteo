@@ -15,7 +15,10 @@ const state = {
   latestCutLabel: "",
   showCutList: false,
   touchStart: null,
-  touchIsVertical: false,
+  touchGesture: null,
+  touchDirection: null,
+  mousePan: null,
+  suppressNextClick: false,
 };
 
 const colors = {
@@ -73,19 +76,96 @@ function isLight() {
   return document.body.classList.contains("light");
 }
 
+function clampChartWindow(chart, min, max) {
+  const lastIndex = chart.data.labels.length - 1;
+  const span = Math.max(1, max - min);
+  let nextMin = min;
+  let nextMax = max;
+
+  if (nextMin < 0) {
+    nextMin = 0;
+    nextMax = Math.min(lastIndex, nextMin + span);
+  }
+  if (nextMax > lastIndex) {
+    nextMax = lastIndex;
+    nextMin = Math.max(0, nextMax - span);
+  }
+
+  return { min: nextMin, max: nextMax };
+}
+
+function updateRangeLabelFromChart(chart) {
+  const labels = chart.data.labels;
+  if (!labels.length) return;
+
+  const min = Math.max(0, Math.min(labels.length - 1, Math.ceil(chart.scales.x.min ?? 0)));
+  const max = Math.max(0, Math.min(labels.length - 1, Math.floor(chart.scales.x.max ?? labels.length - 1)));
+  state.rangeStart = labels[min].slice(0, 7);
+  state.rangeEnd = labels[max].slice(0, 7);
+  elements.windowLabel.textContent = `${longLabel(state.rangeStart)} -> ${longLabel(state.rangeEnd)}`;
+}
+
+function setChartXWindow(chart, min, max) {
+  const range = clampChartWindow(chart, min, max);
+  chart.options.scales.x.min = range.min;
+  chart.options.scales.x.max = range.max;
+  chart.update("none");
+  updateRangeLabelFromChart(chart);
+}
+
+function panChartByPixels(chart, startMin, startMax, pixelDelta) {
+  const width = Math.max(1, chart.chartArea.right - chart.chartArea.left);
+  const span = Math.max(1, startMax - startMin);
+  const dataDelta = (-pixelDelta / width) * span;
+  setChartXWindow(chart, startMin + dataDelta, startMax + dataDelta);
+}
+
+function zoomChartAtPixel(chart, startMin, startMax, anchorPixel, ratio) {
+  if (!Number.isFinite(ratio) || ratio <= 0) return;
+  const { left, right } = chart.chartArea;
+  const width = Math.max(1, right - left);
+  const anchorRatio = Math.max(0, Math.min(1, (anchorPixel - left) / width));
+  const startSpan = Math.max(1, startMax - startMin);
+  const nextSpan = Math.max(4, startSpan / ratio);
+  const anchorValue = startMin + startSpan * anchorRatio;
+  const nextMin = anchorValue - nextSpan * anchorRatio;
+  setChartXWindow(chart, nextMin, nextMin + nextSpan);
+}
+
 function installChartTouchHandling() {
   elements.canvas.addEventListener(
     "touchstart",
     (event) => {
-      if (event.touches.length !== 1) {
+      const chart = state.chart;
+      if (!chart) return;
+
+      if (event.touches.length > 1) {
+        const first = event.touches[0];
+        const second = event.touches[1];
+        const distance = Math.hypot(
+          second.clientX - first.clientX,
+          second.clientY - first.clientY,
+        );
         state.touchStart = null;
-        state.touchIsVertical = false;
+        state.touchDirection = "pinch";
+        state.touchGesture = {
+          distance,
+          centerX: (first.clientX + second.clientX) / 2,
+          min: chart.scales.x.min ?? 0,
+          max: chart.scales.x.max ?? chart.data.labels.length - 1,
+        };
         return;
       }
 
       const touch = event.touches[0];
-      state.touchStart = { x: touch.clientX, y: touch.clientY };
-      state.touchIsVertical = false;
+      state.touchStart = {
+        x: touch.clientX,
+        y: touch.clientY,
+        min: chart.scales.x.min ?? 0,
+        max: chart.scales.x.max ?? chart.data.labels.length - 1,
+      };
+      state.touchGesture = null;
+      state.touchDirection = null;
     },
     { capture: true, passive: true },
   );
@@ -93,27 +173,72 @@ function installChartTouchHandling() {
   elements.canvas.addEventListener(
     "touchmove",
     (event) => {
+      const chart = state.chart;
+      if (!chart) return;
+
+      if (event.touches.length > 1) {
+        const first = event.touches[0];
+        const second = event.touches[1];
+        const distance = Math.hypot(
+          second.clientX - first.clientX,
+          second.clientY - first.clientY,
+        );
+        if (!state.touchGesture || state.touchDirection !== "pinch") {
+          state.touchGesture = {
+            distance,
+            centerX: (first.clientX + second.clientX) / 2,
+            min: chart.scales.x.min ?? 0,
+            max: chart.scales.x.max ?? chart.data.labels.length - 1,
+          };
+        }
+        state.touchDirection = "pinch";
+        zoomChartAtPixel(
+          chart,
+          state.touchGesture.min,
+          state.touchGesture.max,
+          state.touchGesture.centerX,
+          distance / Math.max(1, state.touchGesture.distance),
+        );
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+
       if (!state.touchStart || event.touches.length !== 1) return;
 
       const touch = event.touches[0];
       const dx = Math.abs(touch.clientX - state.touchStart.x);
       const dy = Math.abs(touch.clientY - state.touchStart.y);
-      if (!state.touchIsVertical && dy > dx * 1.2 && dy > 8) {
-        state.touchIsVertical = true;
+      if (!state.touchDirection && Math.max(dx, dy) > 8) {
+        state.touchDirection = dy > dx * 1.2 ? "vertical" : "horizontal";
       }
 
-      if (state.touchIsVertical) {
+      if (state.touchDirection === "vertical") {
+        event.stopImmediatePropagation();
+        return;
+      }
+
+      if (state.touchDirection === "horizontal") {
+        panChartByPixels(
+          chart,
+          state.touchStart.min,
+          state.touchStart.max,
+          touch.clientX - state.touchStart.x,
+        );
+        state.suppressNextClick = true;
+        event.preventDefault();
         event.stopImmediatePropagation();
       }
     },
-    { capture: true, passive: true },
+    { capture: true, passive: false },
   );
 
   elements.canvas.addEventListener(
     "touchend",
     () => {
       state.touchStart = null;
-      state.touchIsVertical = false;
+      state.touchGesture = null;
+      state.touchDirection = null;
     },
     { capture: true, passive: true },
   );
@@ -122,10 +247,43 @@ function installChartTouchHandling() {
     "touchcancel",
     () => {
       state.touchStart = null;
-      state.touchIsVertical = false;
+      state.touchGesture = null;
+      state.touchDirection = null;
     },
     { capture: true, passive: true },
   );
+
+  elements.canvas.addEventListener("mousedown", (event) => {
+    if (!state.chart || event.button !== 0) return;
+    const { left, right, top, bottom } = state.chart.chartArea;
+    if (
+      event.offsetX < left ||
+      event.offsetX > right ||
+      event.offsetY < top ||
+      event.offsetY > bottom
+    )
+      return;
+
+    state.mousePan = {
+      x: event.clientX,
+      min: state.chart.scales.x.min ?? 0,
+      max: state.chart.scales.x.max ?? state.chart.data.labels.length - 1,
+      moved: false,
+    };
+    event.preventDefault();
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!state.chart || !state.mousePan) return;
+    const dx = event.clientX - state.mousePan.x;
+    if (Math.abs(dx) > 3) state.mousePan.moved = true;
+    panChartByPixels(state.chart, state.mousePan.min, state.mousePan.max, dx);
+  });
+
+  window.addEventListener("mouseup", () => {
+    if (state.mousePan?.moved) state.suppressNextClick = true;
+    state.mousePan = null;
+  });
 }
 
 function formatDay(value) {
@@ -620,6 +778,10 @@ const clickTooltipPlugin = {
   afterEvent(chart, args) {
     const event = args.event;
     if (event.type !== "click") return;
+    if (state.suppressNextClick) {
+      state.suppressNextClick = false;
+      return;
+    }
 
     const { left, right, top, bottom } = chart.chartArea;
     const inChart =
@@ -973,7 +1135,7 @@ function chartOptions() {
           y: { min: "original", max: "original" },
         },
         pan: {
-          enabled: true,
+          enabled: false,
           mode: "x",
           threshold: 4,
           modifierKey: null,
@@ -984,7 +1146,7 @@ function chartOptions() {
             speed: 0.08,
           },
           pinch: {
-            enabled: true,
+            enabled: false,
           },
           drag: {
             enabled: false,
