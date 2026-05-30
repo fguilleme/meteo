@@ -615,6 +615,126 @@ function thresholdIntersections(chart, threshold, targetLabel) {
   return intersections;
 }
 
+function visibleIndexRange(chart) {
+  const lastIndex = chart.data.labels.length - 1;
+  const min = Number.isFinite(chart.scales.x.min) ? chart.scales.x.min : 0;
+  const max = Number.isFinite(chart.scales.x.max)
+    ? chart.scales.x.max
+    : lastIndex;
+  return {
+    start: Math.max(0, Math.ceil(min)),
+    end: Math.min(lastIndex, Math.floor(max)),
+  };
+}
+
+function extremePoint(chart, datasetLabel, compare) {
+  const dataset = chart.data.datasets.find((item) => item.label === datasetLabel);
+  if (!dataset) return null;
+
+  const { start, end } = visibleIndexRange(chart);
+  let best = null;
+  for (let index = start; index <= end; index += 1) {
+    const value = dataset.data[index];
+    if (!Number.isFinite(value)) continue;
+    if (!best || compare(value, best.value)) {
+      best = {
+        index,
+        value,
+        color: dataset.borderColor,
+        point: state.visibleSeries[index],
+      };
+    }
+  }
+  return best;
+}
+
+function extremePointDate(extreme, field) {
+  if (!extreme?.point) return "";
+  if (state.removeSeasonality) return longLabel(extreme.point.label);
+  return formatPointDate(extreme.point, field);
+}
+
+function drawExtremeCursor(chart, extreme, label, field, align) {
+  if (!extreme) return;
+
+  const { ctx, chartArea, scales } = chart;
+  const x = scales.x.getPixelForValue(extreme.index);
+  const y = scales.y.getPixelForValue(extreme.value);
+  if (
+    x < chartArea.left ||
+    x > chartArea.right ||
+    y < chartArea.top ||
+    y > chartArea.bottom
+  ) {
+    return;
+  }
+
+  const text = `${label} ${formatValue(extreme.value)} · ${extremePointDate(extreme, field)}`;
+  ctx.save();
+  ctx.font = "800 11px system-ui, sans-serif";
+  const textWidth = ctx.measureText(text).width;
+  const lineLength = Math.min(72, Math.max(42, textWidth * 0.32));
+  const padding = 7;
+  const boxWidth = textWidth + padding * 2;
+  const boxHeight = 22;
+  const preferRight = align === "right";
+  const lineStart = preferRight ? x + 7 : x - lineLength - 7;
+  const lineEnd = preferRight ? x + lineLength + 7 : x - 7;
+  let boxX = preferRight ? lineEnd + 6 : lineStart - boxWidth - 6;
+  boxX = Math.max(chartArea.left + 4, Math.min(chartArea.right - boxWidth - 4, boxX));
+  let boxY = y - boxHeight / 2;
+  boxY = Math.max(chartArea.top + 4, Math.min(chartArea.bottom - boxHeight - 4, boxY));
+
+  ctx.strokeStyle = extreme.color;
+  ctx.fillStyle = extreme.color;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.9;
+  ctx.beginPath();
+  ctx.moveTo(Math.max(chartArea.left, lineStart), y);
+  ctx.lineTo(Math.min(chartArea.right, lineEnd), y);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  const panelColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--panel")
+    .trim();
+  const textColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--text")
+    .trim();
+
+  roundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 7);
+  ctx.fillStyle = panelColor;
+  ctx.globalAlpha = 0.92;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = extreme.color;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = textColor;
+  ctx.fillText(text, boxX + padding, boxY + 15);
+  ctx.restore();
+}
+
+function drawVisibleExtremes(chart) {
+  drawExtremeCursor(
+    chart,
+    extremePoint(chart, "Max", (value, best) => value > best),
+    "Chaud",
+    "maxDate",
+    "left",
+  );
+  drawExtremeCursor(
+    chart,
+    extremePoint(chart, "Min", (value, best) => value < best),
+    "Froid",
+    "minDate",
+    "right",
+  );
+}
+
 function renderCutList(cursors, activeLabel) {
   const sections = cursors
     .map((cursor) => {
@@ -667,7 +787,6 @@ const rightEdgeCursorPlugin = {
   afterDraw(chart) {
     const index = rightmostVisibleIndex(chart);
     if (index < 0) {
-      updateCutPreviewPanel("");
       updateCutListPanel("");
       return;
     }
@@ -731,6 +850,7 @@ const rightEdgeCursorPlugin = {
     state.latestCutCursors = detailCursors;
     state.latestCutLabel = state.visibleSeries[index]?.label ?? "";
     renderCutList(detailCursors, state.latestCutLabel);
+    drawVisibleExtremes(chart);
   },
 };
 
