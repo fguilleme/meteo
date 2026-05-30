@@ -79,6 +79,39 @@ input {
   animation: rise 520ms ease both;
 }
 
+.source-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.source-tab {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.source-tab:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+}
+
+.source-tab.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--accent);
@@ -277,6 +310,11 @@ h1 {
   accent-color: var(--accent);
 }
 
+.seasonality-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .range-button {
   min-height: 40px;
   padding: 0 12px;
@@ -466,7 +504,7 @@ body.light .chart-panel {
   }
 
   .station-summary {
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 38vw);
+    grid-template-columns: 1fr;
   }
 }
 

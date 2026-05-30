@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Meteo SYNOP France</title>
-  <link rel="stylesheet" href="/styles.css?v=harmonic-seasonality-20260529" />
+  <link rel="stylesheet" href="/styles.css?v=source-tabs-20260530" />
   <script src="/vendor/chart.umd.js"></script>
   <script src="/vendor/hammer.min.js"></script>
   <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -15,8 +15,16 @@
   <main class="app-shell">
     <section class="hero">
       <div>
-        <p class="eyebrow">SYNOP France 1996-2026</p>
-        <h2>Temperatures mensuelles des principales villes</h2>
+        <p class="eyebrow">France météo</p>
+        <h2>Temperatures historiques par station</h2>
+        <div class="source-tabs" aria-label="Source de donnees">
+          <button class="source-tab" data-source="synop" type="button">
+            SYNOP France 1996/2026
+          </button>
+          <button class="source-tab" data-source="noaa" type="button">
+            NOAA 1900/2026
+          </button>
+        </div>
       </div>
       <div class="actions">
         <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">
@@ -27,10 +35,6 @@
 
     <section class="summary" aria-live="polite">
       <div class="station-summary">
-        <label class="city-select-label" for="citySelect">
-          <select id="citySelect"></select>
-        </label>
-        </span>
         <div class="station-identity">
           <strong>
             <span id="currentCity">Chargement</span>
@@ -40,6 +44,10 @@
             <span id="currentCode">-</span>
           </strong>
         </div>
+        <label class="city-select-label" for="citySelect">
+          <span>Ville</span>
+          <select id="citySelect"></select>
+        </label>
       </div>
     </section>
 
@@ -82,7 +90,7 @@
     <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
   </main>
 
-  <script src="/app.js?v=harmonic-seasonality-20260529"></script>
+  <script src="/app.js?v=source-tabs-20260530"></script>
 </body>
 
 </html>

@@ -17,7 +17,10 @@ const chartZoomPath = path.join(
   "dist",
   "chartjs-plugin-zoom.min.js"
 );
-const cachePath = path.join(__dirname, "data", "monthly-temperatures.json");
+const cachePaths = {
+  synop: path.join(__dirname, "data", "monthly-temperatures.json"),
+  noaa: path.join(__dirname, "data", "noaa-ghcn-france.json")
+};
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -32,25 +35,36 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function buildCache() {
+function runScript(scriptName) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["scripts/build-cache.js"], {
+    const child = spawn(process.execPath, [path.join("scripts", scriptName)], {
       cwd: __dirname,
       stdio: "inherit"
     });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`Data cache build failed with exit code ${code}`));
+      else reject(new Error(`${scriptName} failed with exit code ${code}`));
     });
   });
 }
 
-let cacheReady = null;
-async function ensureCache() {
-  if (existsSync(cachePath)) return;
-  if (!cacheReady) cacheReady = buildCache();
-  await cacheReady;
+const cacheBuilders = {
+  synop: "build-cache.js",
+  noaa: "update-noaa-ghcn.js"
+};
+const cacheReady = new Map();
+
+async function ensureCache(source) {
+  const cachePath = cachePaths[source];
+  if (!cachePath) throw new Error(`Unknown data source: ${source}`);
+  if (existsSync(cachePath)) return cachePath;
+
+  if (!cacheReady.has(source)) {
+    cacheReady.set(source, runScript(cacheBuilders[source]));
+  }
+  await cacheReady.get(source);
+  return cachePath;
 }
 
 async function serveStatic(request, response, url) {
@@ -84,7 +98,8 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host}`);
 
     if (url.pathname === "/api/temperatures") {
-      await ensureCache();
+      const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";
+      const cachePath = await ensureCache(source);
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store, max-age=0"
@@ -94,9 +109,10 @@ const server = createServer(async (request, response) => {
     }
 
     if (url.pathname === "/api/rebuild") {
-      cacheReady = buildCache();
-      await cacheReady;
-      sendJson(response, 200, { ok: true });
+      const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";
+      cacheReady.set(source, runScript(cacheBuilders[source]));
+      await cacheReady.get(source);
+      sendJson(response, 200, { ok: true, source });
       return;
     }
 

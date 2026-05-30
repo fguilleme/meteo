@@ -3,4 +3,5 @@ node_modules/
 synop_*.csv
 synop_*.csv.tmp
 data/*.tmp
+data/noaa/
 logs/

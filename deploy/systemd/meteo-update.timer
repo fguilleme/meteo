@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Meteo SYNOP data update
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=meteo-update.service
+
+[Install]
+WantedBy=timers.target

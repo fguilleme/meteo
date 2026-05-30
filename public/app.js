@@ -1,6 +1,11 @@
 const state = {
   payload: null,
+  dataSource: "synop",
   selectedCode: "07149",
+  selectedCodes: {
+    synop: "07149",
+    noaa: null,
+  },
   chart: null,
   visibleSeries: [],
   visibleMode: "month",
@@ -28,6 +33,7 @@ const colors = {
 };
 
 const elements = {
+  sourceTabs: document.querySelectorAll("[data-source]"),
   citySelect: document.querySelector("#citySelect"),
   themeToggle: document.querySelector("#themeToggle"),
   currentCity: document.querySelector("#currentCity"),
@@ -302,9 +308,16 @@ function formatValue(value) {
 }
 
 function getCity() {
-  return (
+  const city =
     state.payload.cities.find((city) => city.code === state.selectedCode) ||
-    state.payload.cities[0]
+    state.payload.cities[0];
+  state.selectedCode = city?.code ?? state.selectedCode;
+  return city;
+}
+
+function payloadSupportsDeseasonalizedTrend() {
+  return state.payload?.cities?.some((city) =>
+    city.series?.some((point) => Number.isFinite(point.maxDeseasonalizedTrend)),
   );
 }
 
@@ -973,6 +986,8 @@ function dayTickInterval(span) {
 }
 
 function monthTickInterval(span) {
+  if (span > 600) return 120;
+  if (span > 360) return 60;
   if (span > 180) return 24;
   if (span > 72) return 12;
   if (span > 36) return 6;
@@ -996,7 +1011,8 @@ function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
 
   const [year, month] = label.split("-").map(Number);
   if (span <= 36) return (month - 1) % monthTickInterval(span) === 0;
-  return month === 1 && year % Math.max(1, monthTickInterval(span) / 12) === 0;
+  const yearInterval = Math.max(1, monthTickInterval(span) / 12);
+  return month === 1 && year % yearInterval === 0;
 }
 
 function axisTickLabel(label, index, span, visibleStart) {
@@ -1258,6 +1274,18 @@ function renderCitySelect() {
   }
 }
 
+function syncSourceControls() {
+  elements.sourceTabs.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.source === state.dataSource);
+  });
+  const hasDeseasonalizedTrend = payloadSupportsDeseasonalizedTrend();
+  elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
+  if (!hasDeseasonalizedTrend) {
+    state.removeSeasonality = false;
+    elements.seasonalityToggle.checked = false;
+  }
+}
+
 function setWindowFromNumbers(startNumber, endNumber) {
   const city = getCity();
   const firstNumber = monthToNumber(city.series[0].label);
@@ -1331,18 +1359,38 @@ function alignWindowToEnd() {
   state.chart.update("none");
 }
 
-async function loadData() {
-  const response = await fetch(`/api/temperatures?v=${Date.now()}`, {
+async function loadData(source = state.dataSource) {
+  state.dataSource = source;
+  const response = await fetch(`/api/temperatures?source=${state.dataSource}&v=${Date.now()}`, {
     cache: "no-store",
   });
   if (!response.ok) throw new Error("Impossible de charger les donnees");
   state.payload = await response.json();
+  state.selectedCode = state.selectedCodes[state.dataSource];
+  if (!state.payload.cities.some((city) => city.code === state.selectedCode)) {
+    state.selectedCode = state.payload.cities[0]?.code;
+  }
+  state.selectedCodes[state.dataSource] = state.selectedCode;
+  state.rangeStart = null;
+  state.rangeEnd = null;
+  state.clickedIndex = null;
+  syncSourceControls();
   renderCitySelect();
   applyZoomSetting(state.activePreset, "end");
 }
 
+elements.sourceTabs.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (button.dataset.source === state.dataSource) return;
+    loadData(button.dataset.source).catch((error) => {
+      elements.currentCity.textContent = "Erreur";
+      elements.currentStation.textContent = error.message;
+    });
+  });
+});
 elements.citySelect.addEventListener("change", () => {
   state.selectedCode = elements.citySelect.value;
+  state.selectedCodes[state.dataSource] = state.selectedCode;
   state.clickedIndex = null;
   applyZoomSetting(state.activePreset, "end");
 });
