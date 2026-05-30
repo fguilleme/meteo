@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily Meteo SYNOP data update
+Description=Daily Meteo data update
 
 [Timer]
 OnCalendar=*-*-* 07:30:00

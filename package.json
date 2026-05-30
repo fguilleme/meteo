@@ -7,6 +7,7 @@
     "build:data": "node scripts/build-cache.js",
     "update:data": "node scripts/update-synop.js",
     "update:noaa": "node scripts/update-noaa-ghcn.js",
+    "update:all": "node scripts/update-synop.js && node scripts/update-noaa-ghcn.js",
     "deploy": "bash scripts/deploy.sh",
     "install:systemd": "bash scripts/install-systemd.sh",
     "start": "node server.js",

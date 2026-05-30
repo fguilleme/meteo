@@ -1,5 +1,5 @@
 [Unit]
-Description=Update Meteo SYNOP data
+Description=Update Meteo data
 Wants=network-online.target
 After=network-online.target
 
@@ -8,6 +8,6 @@ Type=oneshot
 WorkingDirectory=/opt/meteo
 Environment=NODE_ENV=production
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/usr/bin/env npm run update:data
+ExecStart=/usr/bin/env npm run update:all
 Nice=10
 IOSchedulingClass=best-effort

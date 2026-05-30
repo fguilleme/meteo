@@ -55,6 +55,11 @@ const cacheBuilders = {
 };
 const cacheReady = new Map();
 
+async function rebuildSource(source) {
+  cacheReady.set(source, runScript(cacheBuilders[source]));
+  await cacheReady.get(source);
+}
+
 async function ensureCache(source) {
   const cachePath = cachePaths[source];
   if (!cachePath) throw new Error(`Unknown data source: ${source}`);
@@ -109,9 +114,16 @@ const server = createServer(async (request, response) => {
     }
 
     if (url.pathname === "/api/rebuild") {
-      const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";
-      cacheReady.set(source, runScript(cacheBuilders[source]));
-      await cacheReady.get(source);
+      const sourceParam = url.searchParams.get("source");
+      if (sourceParam === "all") {
+        await rebuildSource("synop");
+        await rebuildSource("noaa");
+        sendJson(response, 200, { ok: true, source: "all" });
+        return;
+      }
+
+      const source = sourceParam === "noaa" ? "noaa" : "synop";
+      await rebuildSource(source);
       sendJson(response, 200, { ok: true, source });
       return;
     }
