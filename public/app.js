@@ -75,6 +75,11 @@ const shortMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
   month: "short",
 });
 
+const compactTemperatureFormatter = new Intl.NumberFormat("fr-FR", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
 function isLight() {
   return document.body.classList.contains("light");
 }
@@ -307,6 +312,65 @@ function formatValue(value) {
   return `${value.toFixed(2)} °C`;
 }
 
+function formatCompactValue(value) {
+  return `${compactTemperatureFormatter.format(value)} °C`;
+}
+
+function formatSignedCompactValue(value) {
+  const rounded = Math.abs(value) < 0.05 ? 0 : value;
+  const prefix = rounded > 0 ? "+" : "";
+  return `${prefix}${compactTemperatureFormatter.format(rounded)} °C`;
+}
+
+function metricKeyForDatasetLabel(datasetLabel) {
+  if (datasetLabel === "Max") return "max";
+  if (datasetLabel === "Min") return "min";
+  return "avg";
+}
+
+function rawMetricValue(point, datasetLabel) {
+  if (!point) return null;
+  const metric = metricKeyForDatasetLabel(datasetLabel);
+  return point[`${metric}Raw`] ?? point[metric];
+}
+
+function deseasonalizedBaseline(metric) {
+  const city = getCity();
+  if (!city?.series?.length) return null;
+
+  const values = city.series
+    .map((entry) => entry[`${metric}Deseasonalized`])
+    .filter(Number.isFinite);
+  if (!values.length) return null;
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function anomalyMetricValue(point, datasetLabel) {
+  if (!point || !state.removeSeasonality) return null;
+  const metric = metricKeyForDatasetLabel(datasetLabel);
+  const deseasonalized = point[`${metric}Deseasonalized`];
+  if (!Number.isFinite(deseasonalized)) return null;
+
+  const baseline = deseasonalizedBaseline(metric);
+  if (!Number.isFinite(baseline)) return null;
+
+  return deseasonalized - baseline;
+}
+
+function formatDatasetContent(point, datasetLabel, fallbackValue) {
+  const observed = rawMetricValue(point, datasetLabel);
+  const anomaly = anomalyMetricValue(point, datasetLabel);
+  if (Number.isFinite(observed) && Number.isFinite(anomaly)) {
+    return `${formatCompactValue(observed)} (${formatSignedCompactValue(anomaly)})`;
+  }
+
+  const value = Number.isFinite(fallbackValue)
+    ? fallbackValue
+    : valueForDatasetLabel(point, datasetLabel);
+  return formatValue(value);
+}
+
 function getCity() {
   const city =
     state.payload.cities.find((city) => city.code === state.selectedCode) ||
@@ -489,6 +553,9 @@ function displaySeriesValues(series) {
   return series.map((point) => {
     return {
       ...point,
+      minRaw: point.min,
+      avgRaw: point.avg,
+      maxRaw: point.max,
       min: displayMetric(point, "min"),
       avg: displayMetric(point, "avg"),
       max: displayMetric(point, "max"),
@@ -654,6 +721,13 @@ function extremePointDate(extreme, field) {
   return formatPointDate(extreme.point, field);
 }
 
+function rawExtremeValue(extreme, datasetLabel) {
+  if (!extreme?.point) return extreme?.value;
+  if (datasetLabel === "Max") return extreme.point.maxRaw ?? extreme.point.max;
+  if (datasetLabel === "Min") return extreme.point.minRaw ?? extreme.point.min;
+  return extreme.value;
+}
+
 function drawExtremeCursor(chart, extreme, label, field, align) {
   if (!extreme) return;
 
@@ -669,7 +743,15 @@ function drawExtremeCursor(chart, extreme, label, field, align) {
     return;
   }
 
-  const text = `${label} ${formatValue(extreme.value)} · ${extremePointDate(extreme, field)}`;
+  const datasetLabel = label === "Chaud" ? "Max" : "Min";
+  const content = formatDatasetContent(
+    extreme.point,
+    datasetLabel,
+    rawExtremeValue(extreme, datasetLabel),
+  );
+  const text = state.removeSeasonality
+    ? `${content} · ${extremePointDate(extreme, field)}`
+    : `${label} ${content} · ${extremePointDate(extreme, field)}`;
   ctx.save();
   ctx.font = "800 11px system-ui, sans-serif";
   const textWidth = ctx.measureText(text).width;
@@ -910,12 +992,15 @@ const clickTooltipPlugin = {
     const rows = [
       {
         color: colors.max,
-        text: `Max ${formatValue(point.max)} - ${formatPointDate(point, "maxDate")}`,
+        text: `Max ${formatDatasetContent(point, "Max", point.max)} - ${formatPointDate(point, "maxDate")}`,
       },
-      { color: colors.avg, text: `Moy ${formatValue(point.avg)}` },
+      {
+        color: colors.avg,
+        text: `Moy ${formatDatasetContent(point, "Moy", point.avg)}`,
+      },
       {
         color: colors.min,
-        text: `Min ${formatValue(point.min)} - ${formatPointDate(point, "minDate")}`,
+        text: `Min ${formatDatasetContent(point, "Min", point.min)} - ${formatPointDate(point, "minDate")}`,
       },
     ];
 
@@ -1202,11 +1287,12 @@ function chartOptions() {
           },
           label(context) {
             const point = state.visibleSeries[context.dataIndex];
-            const value = formatValue(context.parsed.y);
-            if (context.dataset.label === "Min") {
+            const datasetLabel = context.dataset.label;
+            const value = formatDatasetContent(point, datasetLabel, context.parsed.y);
+            if (datasetLabel === "Min") {
               return `Min ${value} - ${formatDay(point.minDate)}`;
             }
-            if (context.dataset.label === "Max") {
+            if (datasetLabel === "Max") {
               return `Max ${value} - ${formatDay(point.maxDate)}`;
             }
             return `Moy ${value}`;
