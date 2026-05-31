@@ -100,7 +100,167 @@ function rollingAverage(points, metric, windowSize) {
   });
 }
 
-export function addDeseasonalizedValues(points, trendWindow) {
+function oddWindow(size, requested) {
+  const bounded = Math.max(3, Math.min(size, requested));
+  return bounded % 2 === 1 ? bounded : Math.max(3, bounded - 1);
+}
+
+function median(values) {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function tricube(value) {
+  const bounded = Math.max(0, Math.min(1, Math.abs(value)));
+  const inner = 1 - bounded ** 3;
+  return inner ** 3;
+}
+
+function localLinear(xs, ys, targetX, span, robustnessWeights) {
+  const candidates = xs
+    .map((x, index) => ({ x, y: ys[index], index, distance: Math.abs(x - targetX) }))
+    .filter((item) => Number.isFinite(item.y))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, span);
+
+  if (!candidates.length) return null;
+  const maxDistance = Math.max(...candidates.map((item) => item.distance)) || 1;
+  let sw = 0;
+  let sx = 0;
+  let sy = 0;
+  let sxx = 0;
+  let sxy = 0;
+
+  for (const item of candidates) {
+    const robustWeight = robustnessWeights?.[item.index] ?? 1;
+    const weight = tricube(item.distance / maxDistance) * robustWeight;
+    if (weight <= 0) continue;
+    const x = item.x - targetX;
+    sw += weight;
+    sx += weight * x;
+    sy += weight * item.y;
+    sxx += weight * x * x;
+    sxy += weight * x * item.y;
+  }
+
+  if (sw <= 0) return null;
+  const denominator = sw * sxx - sx * sx;
+  if (Math.abs(denominator) < 1e-12) return sy / sw;
+  const intercept = (sxx * sy - sx * sxy) / denominator;
+  return intercept;
+}
+
+function loessSmooth(values, span, robustnessWeights) {
+  const xs = values.map((_, index) => index);
+  const windowSize = oddWindow(values.length, span);
+  return values.map((_, index) => localLinear(xs, values, index, windowSize, robustnessWeights));
+}
+
+function seasonalLoess(values, period, spanCycles, robustnessWeights) {
+  const seasonal = Array(values.length).fill(null);
+
+  for (let phase = 0; phase < period; phase += 1) {
+    const indices = [];
+    const xs = [];
+    const ys = [];
+    const weights = [];
+    for (let index = phase; index < values.length; index += period) {
+      indices.push(index);
+      xs.push(Math.floor(index / period));
+      ys.push(values[index]);
+      weights.push(robustnessWeights?.[index] ?? 1);
+    }
+
+    if (!indices.length) continue;
+    const span = oddWindow(indices.length, Math.min(indices.length, spanCycles));
+    for (let item = 0; item < indices.length; item += 1) {
+      seasonal[indices[item]] = localLinear(xs, ys, xs[item], span, weights);
+    }
+  }
+
+  for (let start = 0; start < values.length; start += period) {
+    const end = Math.min(values.length, start + period);
+    const block = seasonal.slice(start, end).filter(Number.isFinite);
+    if (!block.length) continue;
+    const blockMean = block.reduce((sum, value) => sum + value, 0) / block.length;
+    for (let index = start; index < end; index += 1) {
+      if (Number.isFinite(seasonal[index])) seasonal[index] -= blockMean;
+    }
+  }
+
+  return seasonal;
+}
+
+function robustWeights(residuals) {
+  const absMedian = median(residuals.map((value) => Math.abs(value)));
+  if (!Number.isFinite(absMedian) || absMedian <= 0) return residuals.map(() => 1);
+  const cutoff = 6 * absMedian;
+  return residuals.map((residual) => {
+    if (!Number.isFinite(residual)) return 0;
+    const ratio = Math.abs(residual) / cutoff;
+    if (ratio >= 1) return 0;
+    return (1 - ratio * ratio) ** 2;
+  });
+}
+
+function stlDecompose(values, options = {}) {
+  const period = options.period ?? 12;
+  if (values.length < period * 3) return null;
+
+  const trendSpan = oddWindow(values.length, options.trendSpan ?? 121);
+  const seasonalSpan = options.seasonalSpan ?? 21;
+  let seasonal = Array(values.length).fill(0);
+  let trend = loessSmooth(values, trendSpan);
+  let weights = Array(values.length).fill(1);
+  const iterations = options.iterations ?? 2;
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const detrended = values.map((value, index) =>
+      Number.isFinite(value) && Number.isFinite(trend[index]) ? value - trend[index] : null,
+    );
+    seasonal = seasonalLoess(detrended, period, seasonalSpan, weights);
+    const deseasonalized = values.map((value, index) =>
+      Number.isFinite(value) && Number.isFinite(seasonal[index]) ? value - seasonal[index] : null,
+    );
+    trend = loessSmooth(deseasonalized, trendSpan, weights);
+    const residuals = values.map((value, index) =>
+      Number.isFinite(value) &&
+      Number.isFinite(seasonal[index]) &&
+      Number.isFinite(trend[index])
+        ? value - seasonal[index] - trend[index]
+        : null,
+    );
+    weights = robustWeights(residuals);
+  }
+
+  return { seasonal, trend };
+}
+
+function addStlDeseasonalizedValues(points, options = {}) {
+  const metrics = ["min", "avg", "max"];
+  if (points.some((point) => point.label.length !== 7)) return;
+
+  for (const metric of metrics) {
+    const values = points.map((point) => point[metric]);
+    const decomposition = stlDecompose(values, options);
+    if (!decomposition) continue;
+
+    for (let index = 0; index < points.length; index += 1) {
+      const seasonal = decomposition.seasonal[index];
+      const trend = decomposition.trend[index];
+      if (!Number.isFinite(seasonal) || !Number.isFinite(trend)) continue;
+      points[index][`${metric}StlSeasonal`] = Number(seasonal.toFixed(2));
+      points[index][`${metric}StlDeseasonalized`] = Number((values[index] - seasonal).toFixed(2));
+      points[index][`${metric}StlDeseasonalizedTrend`] = Number(trend.toFixed(2));
+    }
+  }
+}
+
+export function addDeseasonalizedValues(points, trendWindow, options = {}) {
   const metrics = ["min", "avg", "max"];
   const models = new Map(metrics.map((metric) => [metric, fitHarmonic(points, metric)]));
 
@@ -124,5 +284,9 @@ export function addDeseasonalizedValues(points, trendWindow) {
         points[index][`${metric}DeseasonalizedTrend`] = trend;
       }
     }
+  }
+
+  if (options.stl) {
+    addStlDeseasonalizedValues(points, options.stl);
   }
 }

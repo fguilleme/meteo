@@ -12,6 +12,7 @@ const state = {
   clickedIndex: null,
   activePreset: "2y",
   removeSeasonality: false,
+  showAnomalies: false,
   rangeStart: null,
   rangeEnd: null,
   cutListHtml: "",
@@ -41,6 +42,7 @@ const elements = {
   currentCode: document.querySelector("#currentCode"),
   windowLabel: document.querySelector("#windowLabel"),
   seasonalityToggle: document.querySelector("#seasonalityToggle"),
+  anomalyToggle: document.querySelector("#anomalyToggle"),
   zoomButtons: document.querySelectorAll("[data-zoom]"),
   alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart"),
@@ -334,12 +336,73 @@ function rawMetricValue(point, datasetLabel) {
   return point[`${metric}Raw`] ?? point[metric];
 }
 
+function deseasonalizedMetricValue(point, metric) {
+  if (!point) return null;
+  const stlValue = point[`${metric}StlDeseasonalized`];
+  if (Number.isFinite(stlValue)) return stlValue;
+  const harmonicValue = point[`${metric}Deseasonalized`];
+  return Number.isFinite(harmonicValue) ? harmonicValue : null;
+}
+
+function referenceYearRange() {
+  const city = getCity();
+  const years = city.series
+    .map((point) => Number(point.label.slice(0, 4)))
+    .filter(Number.isFinite);
+  if (!years.length) return null;
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+  if (minYear <= 1961 && maxYear >= 1990) return [1961, 1990];
+  return [minYear, maxYear];
+}
+
+function pointYear(point) {
+  return Number(point?.label?.slice(0, 4));
+}
+
+function displayMetricAbsolute(point, metric) {
+  const stlTrendKey = `${metric}StlDeseasonalizedTrend`;
+  if (Number.isFinite(point[stlTrendKey])) return point[stlTrendKey];
+  const trendKey = `${metric}DeseasonalizedTrend`;
+  if (Number.isFinite(point[trendKey])) return point[trendKey];
+  const stlDeseasonalizedKey = `${metric}StlDeseasonalized`;
+  if (Number.isFinite(point[stlDeseasonalizedKey])) return point[stlDeseasonalizedKey];
+  const deseasonalizedKey = `${metric}Deseasonalized`;
+  if (Number.isFinite(point[deseasonalizedKey])) return point[deseasonalizedKey];
+  return point[metric];
+}
+
+function metricReferenceBaseline(metric, daily = false) {
+  const city = getCity();
+  const series = daily && city.dailySeries?.length ? city.dailySeries : city.series;
+  const range = referenceYearRange();
+  if (!series?.length || !range) return null;
+  const [startYear, endYear] = range;
+
+  const values = series
+    .filter((entry) => {
+      const year = pointYear(entry);
+      return year >= startYear && year <= endYear;
+    })
+    .map((entry) => displayMetricAbsolute(entry, metric))
+    .filter(Number.isFinite);
+  if (!values.length) return null;
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 function deseasonalizedBaseline(metric) {
   const city = getCity();
-  if (!city?.series?.length) return null;
+  const range = referenceYearRange();
+  if (!city?.series?.length || !range) return null;
+  const [startYear, endYear] = range;
 
   const values = city.series
-    .map((entry) => entry[`${metric}Deseasonalized`])
+    .filter((entry) => {
+      const year = pointYear(entry);
+      return year >= startYear && year <= endYear;
+    })
+    .map((entry) => deseasonalizedMetricValue(entry, metric))
     .filter(Number.isFinite);
   if (!values.length) return null;
 
@@ -349,10 +412,14 @@ function deseasonalizedBaseline(metric) {
 function anomalyMetricValue(point, datasetLabel) {
   if (!point || !state.removeSeasonality) return null;
   const metric = metricKeyForDatasetLabel(datasetLabel);
-  const deseasonalized = point[`${metric}Deseasonalized`];
+  const deseasonalized = state.showAnomalies
+    ? displayMetricAbsolute(point, metric)
+    : deseasonalizedMetricValue(point, metric);
   if (!Number.isFinite(deseasonalized)) return null;
 
-  const baseline = deseasonalizedBaseline(metric);
+  const baseline = state.showAnomalies
+    ? metricReferenceBaseline(metric, state.visibleMode === "day")
+    : deseasonalizedBaseline(metric);
   if (!Number.isFinite(baseline)) return null;
 
   return deseasonalized - baseline;
@@ -381,7 +448,11 @@ function getCity() {
 
 function payloadSupportsDeseasonalizedTrend() {
   return state.payload?.cities?.some((city) =>
-    city.series?.some((point) => Number.isFinite(point.maxDeseasonalizedTrend)),
+    city.series?.some(
+      (point) =>
+        Number.isFinite(point.maxStlDeseasonalizedTrend) ||
+        Number.isFinite(point.maxDeseasonalizedTrend),
+    ),
   );
 }
 
@@ -542,11 +613,10 @@ function valueForDatasetLabel(point, label) {
 
 function displayMetric(point, metric) {
   if (!state.removeSeasonality) return point[metric];
-  const trendKey = `${metric}DeseasonalizedTrend`;
-  if (Number.isFinite(point[trendKey])) return point[trendKey];
-  const deseasonalizedKey = `${metric}Deseasonalized`;
-  if (Number.isFinite(point[deseasonalizedKey])) return point[deseasonalizedKey];
-  return point[metric];
+  const value = displayMetricAbsolute(point, metric);
+  if (!state.showAnomalies) return value;
+  const baseline = metricReferenceBaseline(metric, state.visibleMode === "day");
+  return Number.isFinite(value) && Number.isFinite(baseline) ? value - baseline : value;
 }
 
 function displaySeriesValues(series) {
@@ -1384,14 +1454,20 @@ function chartOptions() {
       y: {
         title: {
           display: true,
-          text: state.removeSeasonality
-            ? "Température désaisonnalisée (°C)"
-            : "Température (°C)",
+          text:
+            state.removeSeasonality && state.showAnomalies
+              ? "Anomalie désaisonnalisée (°C)"
+              : state.removeSeasonality
+                ? "Température désaisonnalisée (°C)"
+                : "Température (°C)",
           color: mutedColor,
         },
         ticks: {
           color: mutedColor,
-          callback: (value) => `${value} °C`,
+          callback: (value) =>
+            state.removeSeasonality && state.showAnomalies
+              ? formatSignedCompactValue(value)
+              : `${value} °C`,
         },
         grid: {
           color: isLight() ? colors.gridLight : colors.gridDark,
@@ -1404,7 +1480,7 @@ function chartOptions() {
 function cityDatasets(series) {
   const datasets = [];
 
-  if (state.removeSeasonality) {
+  if (state.removeSeasonality && !state.showAnomalies) {
     datasets.push(
       {
         label: "Max brut",
@@ -1528,9 +1604,17 @@ function syncSourceControls() {
   });
   const hasDeseasonalizedTrend = payloadSupportsDeseasonalizedTrend();
   elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
+  elements.anomalyToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
+  elements.anomalyToggle.checked = state.showAnomalies;
   if (!hasDeseasonalizedTrend) {
     state.removeSeasonality = false;
+    state.showAnomalies = false;
     elements.seasonalityToggle.checked = false;
+    elements.anomalyToggle.checked = false;
+  }
+  if (!state.removeSeasonality) {
+    state.showAnomalies = false;
+    elements.anomalyToggle.checked = false;
   }
 }
 
@@ -1648,6 +1732,13 @@ elements.zoomButtons.forEach((button) => {
 elements.alignEnd.addEventListener("click", alignWindowToEnd);
 elements.seasonalityToggle.addEventListener("change", () => {
   state.removeSeasonality = elements.seasonalityToggle.checked;
+  if (!state.removeSeasonality) state.showAnomalies = false;
+  state.clickedIndex = null;
+  syncSourceControls();
+  renderChart();
+});
+elements.anomalyToggle.addEventListener("change", () => {
+  state.showAnomalies = elements.anomalyToggle.checked;
   state.clickedIndex = null;
   renderChart();
 });

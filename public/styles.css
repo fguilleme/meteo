@@ -290,6 +290,7 @@ h1 {
 .window-status strong {
   color: var(--text);
   font-size: 1rem;
+  padding-bottom: 10px;
 }
 
 .seasonality-toggle {
