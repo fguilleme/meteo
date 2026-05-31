@@ -1271,9 +1271,8 @@ function monthTickInterval(span) {
 }
 
 function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
-  if (index === visibleStart || index === visibleEnd) return true;
-
   if (state.visibleMode === "day") {
+    if (span <= 45 && (index === visibleStart || index === visibleEnd)) return true;
     const date = new Date(`${label}T00:00:00Z`);
     if (span <= 45) {
       return (index - visibleStart) % dayTickInterval(span) === 0;
@@ -1285,6 +1284,7 @@ function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
   }
 
   const [year, month] = label.split("-").map(Number);
+  if (span <= 36 && (index === visibleStart || index === visibleEnd)) return true;
   if (span <= 36) return (month - 1) % monthTickInterval(span) === 0;
   const yearInterval = Math.max(1, monthTickInterval(span) / 12);
   return month === 1 && year % yearInterval === 0;
