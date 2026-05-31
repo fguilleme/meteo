@@ -1276,6 +1276,9 @@ function chartOptions() {
       },
       tooltip: {
         enabled: false,
+        filter(context) {
+          return !context.dataset.rawOverlay;
+        },
         itemSort(a, b) {
           const order = { Max: 0, Moy: 1, Min: 2 };
           return order[a.dataset.label] - order[b.dataset.label];
@@ -1399,7 +1402,44 @@ function chartOptions() {
 }
 
 function cityDatasets(series) {
-  return [
+  const datasets = [];
+
+  if (state.removeSeasonality) {
+    datasets.push(
+      {
+        label: "Max brut",
+        rawOverlay: true,
+        data: series.map((point) => point.maxRaw ?? point.max),
+        borderColor: "rgba(255, 107, 107, 0.36)",
+        backgroundColor: "rgba(255, 107, 107, 0.06)",
+        borderWidth: 0.6,
+        pointRadius: 0,
+        tension: 0.28,
+      },
+      {
+        label: "Moy brut",
+        rawOverlay: true,
+        data: series.map((point) => point.avgRaw ?? point.avg),
+        borderColor: "rgba(247, 178, 103, 0.34)",
+        backgroundColor: "rgba(247, 178, 103, 0.08)",
+        borderWidth: 0.6,
+        pointRadius: 0,
+        tension: 0.28,
+      },
+      {
+        label: "Min brut",
+        rawOverlay: true,
+        data: series.map((point) => point.minRaw ?? point.min),
+        borderColor: "rgba(54, 209, 196, 0.34)",
+        backgroundColor: "rgba(54, 209, 196, 0.07)",
+        borderWidth: 0.6,
+        pointRadius: 0,
+        tension: 0.28,
+      },
+    );
+  }
+
+  datasets.push(
     {
       label: "Max",
       data: series.map((point) => point.max),
@@ -1427,7 +1467,9 @@ function cityDatasets(series) {
       pointRadius: 0,
       tension: 0.28,
     },
-  ];
+  );
+
+  return datasets;
 }
 
 function updateSummary(city, series) {
