@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createReadStream, existsSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, "public");
+const liveReloadEnabled = process.env.NODE_ENV !== "production";
 const chartPath = path.join(__dirname, "node_modules", "chart.js", "dist", "chart.umd.js");
 const hammerPath = path.join(__dirname, "node_modules", "hammerjs", "hammer.min.js");
 const chartZoomPath = path.join(
@@ -29,6 +30,62 @@ const mimeTypes = {
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml"
 };
+
+const liveReloadClients = new Set();
+const liveReloadFiles = ["index.html", "app.js", "styles.css"].map((fileName) =>
+  path.join(publicDir, fileName)
+);
+const liveReloadScript = `
+<script>
+(() => {
+  const events = new EventSource("/__live-reload");
+  events.addEventListener("reload", () => window.location.reload());
+})();
+</script>`;
+
+let liveReloadTimer = null;
+function broadcastLiveReload() {
+  clearTimeout(liveReloadTimer);
+  liveReloadTimer = setTimeout(() => {
+    for (const response of liveReloadClients) {
+      response.write("event: reload\ndata: now\n\n");
+    }
+  }, 80);
+}
+
+let liveReloadSnapshot = new Map();
+async function snapshotLiveReloadFiles() {
+  const snapshot = new Map();
+  for (const filePath of liveReloadFiles) {
+    try {
+      const fileStat = await stat(filePath);
+      snapshot.set(filePath, `${fileStat.mtimeMs}:${fileStat.size}`);
+    } catch {
+      snapshot.set(filePath, "missing");
+    }
+  }
+  return snapshot;
+}
+
+async function pollLiveReloadFiles() {
+  const nextSnapshot = await snapshotLiveReloadFiles();
+  for (const [filePath, signature] of nextSnapshot) {
+    if (liveReloadSnapshot.get(filePath) !== signature) {
+      liveReloadSnapshot = nextSnapshot;
+      broadcastLiveReload();
+      return;
+    }
+  }
+}
+
+if (liveReloadEnabled) {
+  liveReloadSnapshot = await snapshotLiveReloadFiles();
+  setInterval(() => {
+    pollLiveReloadFiles().catch((error) => {
+      console.warn(`[live-reload] ${error.message}`);
+    });
+  }, 400).unref();
+}
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
@@ -87,6 +144,16 @@ async function serveStatic(request, response, url) {
     if (!fileStat.isFile()) throw new Error("Not a file");
 
     const extension = path.extname(filePath);
+    if (liveReloadEnabled && requestPath === "/index.html") {
+      const html = await readFile(filePath, "utf8");
+      response.writeHead(200, {
+        "Content-Type": mimeTypes[extension],
+        "Cache-Control": "no-store, max-age=0"
+      });
+      response.end(html.replace("</body>", `${liveReloadScript}\n</body>`));
+      return;
+    }
+
     response.writeHead(200, {
       "Content-Type": mimeTypes[extension] || "application/octet-stream",
       "Cache-Control": "no-store, max-age=0"
@@ -101,6 +168,18 @@ async function serveStatic(request, response, url) {
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host}`);
+
+    if (liveReloadEnabled && url.pathname === "/__live-reload") {
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-store, max-age=0",
+        Connection: "keep-alive"
+      });
+      response.write(": connected\n\n");
+      liveReloadClients.add(response);
+      request.on("close", () => liveReloadClients.delete(response));
+      return;
+    }
 
     if (url.pathname === "/api/temperatures") {
       const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";

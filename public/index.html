@@ -1,96 +1,104 @@
 <!doctype html>
 <html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meteo SYNOP/NOAA France</title>
+    <link rel="stylesheet" href="/styles.css?v=source-tabs-20260530" />
+    <script src="/vendor/chart.umd.js"></script>
+    <script src="/vendor/hammer.min.js"></script>
+    <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
+  </head>
 
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Meteo SYNOP France</title>
-  <link rel="stylesheet" href="/styles.css?v=source-tabs-20260530" />
-  <script src="/vendor/chart.umd.js"></script>
-  <script src="/vendor/hammer.min.js"></script>
-  <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
-</head>
-
-<body>
-  <main class="app-shell">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">France météo</p>
-        <h2>Temperatures historiques par station</h2>
-        <div class="source-tabs" aria-label="Source de donnees">
-          <button class="source-tab" data-source="synop" type="button">
-            SYNOP France 1996/2026
-          </button>
-          <button class="source-tab" data-source="noaa" type="button">
-            NOAA 1900/2026
-          </button>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <h2>Temperatures historiques par station</h2>
+          <div class="source-tabs" aria-label="Source de donnees">
+            <button class="source-tab" data-source="synop" type="button">
+              SYNOP France 1996/2026
+            </button>
+            <button class="source-tab" data-source="noaa" type="button">
+              NOAA 1900/2026
+            </button>
+            <button
+              class="icon-button"
+              id="themeToggle"
+              type="button"
+              aria-label="Changer le theme"
+            >
+              ◐
+            </button>
+          </div>
         </div>
-      </div>
-      <div class="actions">
-        <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">
-          ◐
-        </button>
-      </div>
-    </section>
+      </section>
 
-    <section class="summary" aria-live="polite">
-      <div class="station-summary">
-        <div class="station-identity">
-          <strong>
-            <span id="currentCity">Chargement</span>
-            <span class="summary-separator"> STATION</span>
-            <span id="currentStation">-</span>
-            <span class="summary-separator">CODE</span>
-            <span id="currentCode">-</span>
-          </strong>
+      <section class="summary" aria-live="polite">
+        <div class="station-summary">
+          <div class="station-identity">
+            <strong>
+              <span id="currentCity">Chargement</span>
+              <span class="summary-separator"> STATION</span>
+              <span id="currentStation">-</span>
+              <span class="summary-separator">CODE</span>
+              <span id="currentCode">-</span>
+            </strong>
+          </div>
+          <label class="city-select-label" for="citySelect">
+            <select id="citySelect"></select>
+          </label>
         </div>
-        <label class="city-select-label" for="citySelect">
-          <span>Ville</span>
-          <select id="citySelect"></select>
+      </section>
+
+      <section class="range-panel" aria-label="Fenetre affichee">
+        <div class="window-status">
+          <strong id="windowLabel">Derniere periode</strong>
+        </div>
+        <label class="seasonality-toggle" for="seasonalityToggle">
+          <input id="seasonalityToggle" type="checkbox" />
+          <span>Correction saisonièrere</span>
         </label>
-      </div>
-    </section>
+        <div class="range-actions" aria-label="Raccourcis de plage">
+          <button class="range-button" data-zoom="all" type="button">
+            Tout
+          </button>
+          <button class="range-button" data-zoom="10y" type="button">
+            10 ans
+          </button>
+          <button class="range-button" data-zoom="5y" type="button">
+            5 ans
+          </button>
+          <button class="range-button" data-zoom="2y" type="button">
+            2 ans
+          </button>
+          <button class="range-button" data-zoom="1y" type="button">
+            1 an
+          </button>
+          <button class="range-button" data-zoom="6m" type="button">
+            6 mois
+          </button>
+          <button
+            class="range-button align-end-button"
+            id="alignEnd"
+            type="button"
+          >
+            Fin
+          </button>
+        </div>
+      </section>
 
-    <section class="range-panel" aria-label="Fenetre affichee">
-      <div class="window-status">
-        <strong id="windowLabel">Derniere periode</strong>
-      </div>
-      <label class="seasonality-toggle" for="seasonalityToggle">
-        <input id="seasonalityToggle" type="checkbox" />
-        <span>Sans saisonnalité</span>
-      </label>
-      <div class="range-actions" aria-label="Raccourcis de plage">
-        <button class="range-button" data-zoom="all" type="button">
-          Tout
-        </button>
-        <button class="range-button" data-zoom="10y" type="button">
-          10 ans
-        </button>
-        <button class="range-button" data-zoom="5y" type="button">
-          5 ans
-        </button>
-        <button class="range-button" data-zoom="2y" type="button">
-          2 ans
-        </button>
-        <button class="range-button" data-zoom="1y" type="button">
-          1 an
-        </button>
-        <button class="range-button" data-zoom="6m" type="button">
-          6 mois
-        </button>
-        <button class="range-button align-end-button" id="alignEnd" type="button">
-          Fin
-        </button>
-      </div>
-    </section>
+      <section class="chart-panel">
+        <canvas id="temperatureChart"></canvas>
+      </section>
+      <section
+        class="cut-list-panel"
+        id="cutListPanel"
+        aria-live="polite"
+        hidden
+      ></section>
+    </main>
 
-    <section class="chart-panel">
-      <canvas id="temperatureChart"></canvas>
-    </section>
-    <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
-  </main>
-
-  <script src="/app.js?v=source-tabs-20260530"></script>
-</body>
-
+    <script src="/app.js?v=source-tabs-20260530"></script>
+  </body>
 </html>

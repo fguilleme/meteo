@@ -19,4 +19,6 @@ rsync -az --progress \
   "${REMOTE}:${REMOTE_DIR}/"
 
 echo "[deploy] Done."
-echo "[deploy] Next on server: cd ${REMOTE_DIR} && npm install --omit=dev && npm run install:systemd"
+echo "[deploy] Installing dependencies and restarting systemd service"
+ssh "${REMOTE}" "cd '${REMOTE_DIR}' && npm install --omit=dev && npm run install:systemd"
+echo "[deploy] Service restarted."

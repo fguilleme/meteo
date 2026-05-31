@@ -11,7 +11,8 @@
     "deploy": "bash scripts/deploy.sh",
     "install:systemd": "bash scripts/install-systemd.sh",
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "dev:watch": "node --watch --watch-path=server.js --watch-path=scripts server.js"
   },
   "dependencies": {
     "chart.js": "^4.5.1",

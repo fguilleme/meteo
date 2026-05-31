@@ -9,7 +9,8 @@ install -m 0644 "${ROOT_DIR}/deploy/systemd/meteo-update.service" "${SYSTEMD_DIR
 install -m 0644 "${ROOT_DIR}/deploy/systemd/meteo-update.timer" "${SYSTEMD_DIR}/meteo-update.timer"
 
 systemctl daemon-reload
-systemctl enable --now meteo.service
+systemctl enable meteo.service
+systemctl restart meteo.service
 systemctl enable --now meteo-update.timer
 
 systemctl --no-pager status meteo.service
