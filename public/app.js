@@ -12,6 +12,7 @@ const state = {
   clickedIndex: null,
   activePreset: "2y",
   removeSeasonality: false,
+  seasonalityMethod: "stl",
   showAnomalies: false,
   showClimateModel: false,
   climateComponents: {
@@ -50,6 +51,7 @@ const elements = {
   currentCode: document.querySelector("#currentCode"),
   windowLabel: document.querySelector("#windowLabel"),
   seasonalityToggle: document.querySelector("#seasonalityToggle"),
+  seasonalityMethodInputs: document.querySelectorAll("[name='seasonalityMethod']"),
   anomalyToggle: document.querySelector("#anomalyToggle"),
   climateModelToggle: document.querySelector("#climateModelToggle"),
   climateComponentToggles: document.querySelectorAll("[data-model-component]"),
@@ -346,12 +348,40 @@ function rawMetricValue(point, datasetLabel) {
   return point[`${metric}Raw`] ?? point[metric];
 }
 
+function seasonalityMethodOrder() {
+  return state.seasonalityMethod === "harmonic"
+    ? ["harmonic", "stl"]
+    : ["stl", "harmonic"];
+}
+
+function deseasonalizedKey(metric, method) {
+  return method === "stl"
+    ? `${metric}StlDeseasonalized`
+    : `${metric}Deseasonalized`;
+}
+
+function deseasonalizedTrendKey(metric, method) {
+  return method === "stl"
+    ? `${metric}StlDeseasonalizedTrend`
+    : `${metric}DeseasonalizedTrend`;
+}
+
 function deseasonalizedMetricValue(point, metric) {
   if (!point) return null;
-  const stlValue = point[`${metric}StlDeseasonalized`];
-  if (Number.isFinite(stlValue)) return stlValue;
-  const harmonicValue = point[`${metric}Deseasonalized`];
-  return Number.isFinite(harmonicValue) ? harmonicValue : null;
+  for (const method of seasonalityMethodOrder()) {
+    const value = point[deseasonalizedKey(metric, method)];
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function deseasonalizedTrendValue(point, metric) {
+  if (!point) return null;
+  for (const method of seasonalityMethodOrder()) {
+    const value = point[deseasonalizedTrendKey(metric, method)];
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 function referenceYearRange() {
@@ -371,14 +401,10 @@ function pointYear(point) {
 }
 
 function displayMetricAbsolute(point, metric) {
-  const stlTrendKey = `${metric}StlDeseasonalizedTrend`;
-  if (Number.isFinite(point[stlTrendKey])) return point[stlTrendKey];
-  const trendKey = `${metric}DeseasonalizedTrend`;
-  if (Number.isFinite(point[trendKey])) return point[trendKey];
-  const stlDeseasonalizedKey = `${metric}StlDeseasonalized`;
-  if (Number.isFinite(point[stlDeseasonalizedKey])) return point[stlDeseasonalizedKey];
-  const deseasonalizedKey = `${metric}Deseasonalized`;
-  if (Number.isFinite(point[deseasonalizedKey])) return point[deseasonalizedKey];
+  const trend = deseasonalizedTrendValue(point, metric);
+  if (Number.isFinite(trend)) return trend;
+  const value = deseasonalizedMetricValue(point, metric);
+  if (Number.isFinite(value)) return value;
   return point[metric];
 }
 
@@ -463,6 +489,13 @@ function payloadSupportsDeseasonalizedTrend() {
         Number.isFinite(point.maxStlDeseasonalizedTrend) ||
         Number.isFinite(point.maxDeseasonalizedTrend),
     ),
+  );
+}
+
+function payloadSupportsSeasonalityMethod(method) {
+  const key = deseasonalizedTrendKey("max", method);
+  return state.payload?.cities?.some((city) =>
+    city.series?.some((point) => Number.isFinite(point[key])),
   );
 }
 
@@ -1556,9 +1589,9 @@ function chartOptions() {
           display: true,
           text:
             state.removeSeasonality && state.showAnomalies
-              ? "Anomalie désaisonnalisée (°C)"
+              ? `Anomalie désaisonnalisée ${state.seasonalityMethod === "stl" ? "STL" : "harmonique"} (°C)`
               : state.removeSeasonality
-                ? "Température désaisonnalisée (°C)"
+                ? `Température désaisonnalisée ${state.seasonalityMethod === "stl" ? "STL" : "harmonique"} (°C)`
                 : "Température (°C)",
           color: mutedColor,
         },
@@ -1662,6 +1695,22 @@ function cityDatasets(series) {
   return datasets;
 }
 
+function hiddenDatasetLabels(chart) {
+  if (!chart) return new Set();
+  return new Set(
+    chart.data.datasets
+      .filter((_, index) => !chart.isDatasetVisible(index))
+      .map((dataset) => dataset.label),
+  );
+}
+
+function applyDatasetVisibility(datasets, hiddenLabels) {
+  for (const dataset of datasets) {
+    if (hiddenLabels.has(dataset.label)) dataset.hidden = true;
+  }
+  return datasets;
+}
+
 function updateSummary(city, series) {
   elements.currentCity.textContent = city.city;
   elements.currentStation.textContent = city.station;
@@ -1669,6 +1718,7 @@ function updateSummary(city, series) {
 }
 
 function renderChart() {
+  const hiddenLabels = hiddenDatasetLabels(state.chart);
   const city = getCity();
   clampRangeToCity(city);
   state.visibleMode =
@@ -1684,7 +1734,7 @@ function renderChart() {
 
   const data = {
     labels: visibleSeries.map((point) => point.label),
-    datasets: cityDatasets(visibleSeries),
+    datasets: applyDatasetVisibility(cityDatasets(visibleSeries), hiddenLabels),
   };
 
   if (!state.chart) {
@@ -1717,7 +1767,20 @@ function syncSourceControls() {
     button.classList.toggle("is-active", button.dataset.source === state.dataSource);
   });
   const hasDeseasonalizedTrend = payloadSupportsDeseasonalizedTrend();
+  const selectedMethodSupported = payloadSupportsSeasonalityMethod(state.seasonalityMethod);
+  if (hasDeseasonalizedTrend && !selectedMethodSupported) {
+    state.seasonalityMethod = payloadSupportsSeasonalityMethod("stl")
+      ? "stl"
+      : "harmonic";
+  }
   elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
+  elements.seasonalityMethodInputs.forEach((input) => {
+    input.disabled =
+      !hasDeseasonalizedTrend ||
+      !state.removeSeasonality ||
+      !payloadSupportsSeasonalityMethod(input.value);
+    input.checked = input.value === state.seasonalityMethod;
+  });
   elements.anomalyToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
   elements.climateModelToggle.disabled =
     !hasDeseasonalizedTrend || !state.removeSeasonality || !state.showAnomalies;
@@ -1872,6 +1935,15 @@ elements.seasonalityToggle.addEventListener("change", () => {
   state.clickedIndex = null;
   syncSourceControls();
   renderChart();
+});
+elements.seasonalityMethodInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    state.seasonalityMethod = input.value;
+    state.clickedIndex = null;
+    syncSourceControls();
+    renderChart();
+  });
 });
 elements.anomalyToggle.addEventListener("change", () => {
   state.showAnomalies = elements.anomalyToggle.checked;

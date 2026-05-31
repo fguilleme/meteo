@@ -196,8 +196,8 @@ async function main() {
   }));
 
   for (const city of cities) {
-    addDeseasonalizedValues(city.series, 13, {
-      stl: { trendSpan: 121, seasonalSpan: 15, iterations: 3 }
+    addDeseasonalizedValues(city.series, 25, {
+      stl: { trendSpan: 25, seasonalSpan: 15, iterations: 3 }
     });
     addDeseasonalizedValues(city.dailySeries, 365);
   }
@@ -208,7 +208,7 @@ async function main() {
     unit: "celsius",
     granularity: "month+day",
     metric: "instantaneous temperature t aggregated by month and by day, invalid Kelvin values excluded; deseasonalized fields remove annual harmonic seasonality; monthly STL fields use robust LOESS decomposition",
-    seasonalityModel: "annual harmonic regression with two harmonics; monthly STL uses robust local linear LOESS by month-of-year with a centered trend smoother",
+    seasonalityModel: "annual harmonic regression with two harmonics and a 25-month centered trend smoother; monthly STL uses robust local linear LOESS by month-of-year with the same 25-month centered trend smoother",
     cities
   };
 

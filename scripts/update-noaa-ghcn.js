@@ -213,8 +213,8 @@ async function main() {
     await download(`${baseUrl}/all/${station.id}.dly`, stationPath);
     const dailySeries = parseDailyFile(await readFile(stationPath, "utf8"));
     const series = monthlySeries(dailySeries);
-    addDeseasonalizedValues(series, 13, {
-      stl: { trendSpan: 121, seasonalSpan: 21, iterations: 3 }
+    addDeseasonalizedValues(series, 25, {
+      stl: { trendSpan: 25, seasonalSpan: 21, iterations: 3 }
     });
     addDeseasonalizedValues(dailySeries, 365);
     cities.push({
@@ -238,7 +238,7 @@ async function main() {
     unit: "celsius",
     granularity: "month+day",
     metric: "GHCN-Daily TMIN/TMAX in tenths of degrees C, quality-flagged values excluded; deseasonalized fields remove annual harmonic seasonality; monthly STL fields use robust LOESS decomposition",
-    seasonalityModel: "annual harmonic regression with two harmonics; monthly STL uses robust local linear LOESS by month-of-year with a centered trend smoother",
+    seasonalityModel: "annual harmonic regression with two harmonics and a 25-month centered trend smoother; monthly STL uses robust local linear LOESS by month-of-year with the same 25-month centered trend smoother",
     selection: {
       country: "FR",
       startYear: options.startYear,

@@ -57,8 +57,18 @@
         </div>
         <label class="seasonality-toggle" for="seasonalityToggle">
           <input id="seasonalityToggle" type="checkbox" />
-          <span>Correction saisonièrere</span>
+          <span>Correction saisonnière</span>
         </label>
+        <div class="seasonality-method" aria-label="Méthode de correction saisonnière">
+          <label>
+            <input name="seasonalityMethod" type="radio" value="stl" checked />
+            <span>STL</span>
+          </label>
+          <label>
+            <input name="seasonalityMethod" type="radio" value="harmonic" />
+            <span>Harmonique</span>
+          </label>
+        </div>
         <label class="seasonality-toggle" for="anomalyToggle">
           <input id="anomalyToggle" type="checkbox" />
           <span>Anomalie</span>

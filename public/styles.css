@@ -315,6 +315,50 @@ h1 {
   opacity: 0.52;
 }
 
+.seasonality-method {
+  display: flex;
+  min-height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.seasonality-method label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 0 12px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.seasonality-method label + label {
+  border-left: 1px solid var(--line);
+}
+
+.seasonality-method input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.seasonality-method label:has(input:checked) {
+  background: color-mix(in srgb, var(--accent), transparent 82%);
+  color: var(--text);
+}
+
+.seasonality-method:has(input:disabled) {
+  opacity: 0.52;
+}
+
+.seasonality-method label:has(input:disabled) {
+  cursor: not-allowed;
+}
+
 .model-components {
   display: flex;
   align-items: center;
