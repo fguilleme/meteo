@@ -13,6 +13,14 @@ const state = {
   activePreset: "2y",
   removeSeasonality: false,
   showAnomalies: false,
+  showClimateModel: false,
+  climateComponents: {
+    trend: true,
+    solar11: true,
+    solar22: true,
+    multidecadal: true,
+    milankovic: false,
+  },
   rangeStart: null,
   rangeEnd: null,
   cutListHtml: "",
@@ -43,6 +51,8 @@ const elements = {
   windowLabel: document.querySelector("#windowLabel"),
   seasonalityToggle: document.querySelector("#seasonalityToggle"),
   anomalyToggle: document.querySelector("#anomalyToggle"),
+  climateModelToggle: document.querySelector("#climateModelToggle"),
+  climateComponentToggles: document.querySelectorAll("[data-model-component]"),
   zoomButtons: document.querySelectorAll("[data-zoom]"),
   alignEnd: document.querySelector("#alignEnd"),
   canvas: document.querySelector("#temperatureChart"),
@@ -631,6 +641,93 @@ function displaySeriesValues(series) {
       max: displayMetric(point, "max"),
     };
   });
+}
+
+function timeYear(point) {
+  if (!point?.label) return null;
+  if (point.label.length === 10) {
+    const date = new Date(`${point.label}T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    return (
+      date.getUTCFullYear() +
+      (Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()) -
+        Date.UTC(date.getUTCFullYear(), 0, 1)) /
+        (365.2425 * 24 * 60 * 60 * 1000)
+    );
+  }
+
+  const [year, month] = point.label.split("-").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+  return year + (month - 0.5) / 12;
+}
+
+function climateCycleFeatures(year, centerYear, period) {
+  const x = year - centerYear;
+  const angle = (2 * Math.PI * x) / period;
+  return [Math.sin(angle), Math.cos(angle)];
+}
+
+function normalizedRamp(year, startYear, endYear) {
+  if (endYear <= startYear) return 0;
+  return Math.max(0, Math.min(1, (year - startYear) / (endYear - startYear)));
+}
+
+function climateModelRawValue(year, startYear, endYear) {
+  let value = 0;
+  const centerYear = (startYear + endYear) / 2;
+
+  if (state.climateComponents.trend) {
+    const ramp = normalizedRamp(year, startYear, endYear);
+    value += 1.35 * ramp ** 1.7;
+  }
+  if (state.climateComponents.solar11) {
+    const [sin, cos] = climateCycleFeatures(year, 1902.3, 10.8);
+    value += 0.06 * sin + 0.02 * cos;
+  }
+  if (state.climateComponents.solar22) {
+    const [sin, cos] = climateCycleFeatures(year, 1913.1, 22);
+    value += 0.035 * sin + 0.015 * cos;
+  }
+  if (state.climateComponents.multidecadal) {
+    const [sin, cos] = climateCycleFeatures(year, 1900, 64);
+    value += 0.14 * sin + 0.07 * cos;
+  }
+  if (state.climateComponents.milankovic) {
+    const precession = climateCycleFeatures(year, centerYear, 23000)[0];
+    const obliquity = climateCycleFeatures(year, centerYear, 41000)[0];
+    const eccentricity = climateCycleFeatures(year, centerYear, 100000)[0];
+    value += 0.004 * precession + 0.003 * obliquity + 0.002 * eccentricity;
+  }
+
+  return value;
+}
+
+function climateModelValues(series) {
+  const years = series.map(timeYear);
+  const validYears = years.filter(Number.isFinite);
+  if (validYears.length < 24) return series.map(() => null);
+
+  const startYear = Math.min(...validYears);
+  const endYear = Math.max(...validYears);
+  const rawValues = years.map((year) =>
+    Number.isFinite(year) ? climateModelRawValue(year, startYear, endYear) : null,
+  );
+  const range = referenceYearRange();
+  const referenceValues = rawValues.filter((value, index) => {
+    const year = years[index];
+    return (
+      Number.isFinite(value) &&
+      Number.isFinite(year) &&
+      range &&
+      year >= range[0] &&
+      year <= range[1]
+    );
+  });
+  const baseline = referenceValues.length
+    ? referenceValues.reduce((sum, value) => sum + value, 0) / referenceValues.length
+    : 0;
+
+  return rawValues.map((value) => (Number.isFinite(value) ? value - baseline : null));
 }
 
 function thresholdStarts(chart, threshold, targetLabel) {
@@ -1350,7 +1447,7 @@ function chartOptions() {
           return !context.dataset.rawOverlay;
         },
         itemSort(a, b) {
-          const order = { Max: 0, Moy: 1, Min: 2 };
+          const order = { Max: 0, Moy: 1, Min: 2, "Modèle": 3 };
           return order[a.dataset.label] - order[b.dataset.label];
         },
         callbacks: {
@@ -1361,6 +1458,9 @@ function chartOptions() {
           label(context) {
             const point = state.visibleSeries[context.dataIndex];
             const datasetLabel = context.dataset.label;
+            if (datasetLabel === "Modèle") {
+              return `Modèle ${formatValue(context.parsed.y)}`;
+            }
             const value = formatDatasetContent(point, datasetLabel, context.parsed.y);
             if (datasetLabel === "Min") {
               return `Min ${value} - ${formatDay(point.minDate)}`;
@@ -1545,6 +1645,20 @@ function cityDatasets(series) {
     },
   );
 
+  if (state.showClimateModel && state.removeSeasonality && state.showAnomalies) {
+    datasets.push({
+      label: "Modèle",
+      climateModel: true,
+      data: climateModelValues(series),
+      borderColor: isLight() ? "rgba(35, 45, 64, 0.82)" : "rgba(244, 248, 255, 0.86)",
+      backgroundColor: "rgba(244, 248, 255, 0.08)",
+      borderDash: [8, 7],
+      borderWidth: 2,
+      pointRadius: 0,
+      tension: 0.32,
+    });
+  }
+
   return datasets;
 }
 
@@ -1605,16 +1719,35 @@ function syncSourceControls() {
   const hasDeseasonalizedTrend = payloadSupportsDeseasonalizedTrend();
   elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
   elements.anomalyToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
+  elements.climateModelToggle.disabled =
+    !hasDeseasonalizedTrend || !state.removeSeasonality || !state.showAnomalies;
   elements.anomalyToggle.checked = state.showAnomalies;
+  elements.climateModelToggle.checked = state.showClimateModel;
+  elements.climateComponentToggles.forEach((input) => {
+    input.disabled =
+      !hasDeseasonalizedTrend ||
+      !state.removeSeasonality ||
+      !state.showAnomalies ||
+      !state.showClimateModel;
+    input.checked = Boolean(state.climateComponents[input.dataset.modelComponent]);
+  });
   if (!hasDeseasonalizedTrend) {
     state.removeSeasonality = false;
     state.showAnomalies = false;
+    state.showClimateModel = false;
     elements.seasonalityToggle.checked = false;
     elements.anomalyToggle.checked = false;
+    elements.climateModelToggle.checked = false;
   }
   if (!state.removeSeasonality) {
     state.showAnomalies = false;
+    state.showClimateModel = false;
     elements.anomalyToggle.checked = false;
+    elements.climateModelToggle.checked = false;
+  }
+  if (!state.showAnomalies) {
+    state.showClimateModel = false;
+    elements.climateModelToggle.checked = false;
   }
 }
 
@@ -1732,15 +1865,33 @@ elements.zoomButtons.forEach((button) => {
 elements.alignEnd.addEventListener("click", alignWindowToEnd);
 elements.seasonalityToggle.addEventListener("change", () => {
   state.removeSeasonality = elements.seasonalityToggle.checked;
-  if (!state.removeSeasonality) state.showAnomalies = false;
+  if (!state.removeSeasonality) {
+    state.showAnomalies = false;
+    state.showClimateModel = false;
+  }
   state.clickedIndex = null;
   syncSourceControls();
   renderChart();
 });
 elements.anomalyToggle.addEventListener("change", () => {
   state.showAnomalies = elements.anomalyToggle.checked;
+  if (!state.showAnomalies) state.showClimateModel = false;
   state.clickedIndex = null;
+  syncSourceControls();
   renderChart();
+});
+elements.climateModelToggle.addEventListener("change", () => {
+  state.showClimateModel = elements.climateModelToggle.checked;
+  state.clickedIndex = null;
+  syncSourceControls();
+  renderChart();
+});
+elements.climateComponentToggles.forEach((input) => {
+  input.addEventListener("change", () => {
+    state.climateComponents[input.dataset.modelComponent] = input.checked;
+    state.clickedIndex = null;
+    renderChart();
+  });
 });
 elements.themeToggle.addEventListener("click", () => {
   document.body.classList.toggle("light");

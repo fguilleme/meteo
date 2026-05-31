@@ -63,6 +63,32 @@
           <input id="anomalyToggle" type="checkbox" />
           <span>Anomalie</span>
         </label>
+        <label class="seasonality-toggle" for="climateModelToggle">
+          <input id="climateModelToggle" type="checkbox" />
+          <span>Modèle</span>
+        </label>
+        <div class="model-components" aria-label="Composantes du modele">
+          <label>
+            <input data-model-component="trend" type="checkbox" checked />
+            <span>Tendance</span>
+          </label>
+          <label>
+            <input data-model-component="solar11" type="checkbox" checked />
+            <span>Solaire 11a</span>
+          </label>
+          <label>
+            <input data-model-component="solar22" type="checkbox" checked />
+            <span>22a</span>
+          </label>
+          <label>
+            <input data-model-component="multidecadal" type="checkbox" checked />
+            <span>64a</span>
+          </label>
+          <label>
+            <input data-model-component="milankovic" type="checkbox" />
+            <span>Milanković</span>
+          </label>
+        </div>
         <div class="range-actions" aria-label="Raccourcis de plage">
           <button class="range-button" data-zoom="all" type="button">
             Tout
