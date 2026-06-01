@@ -256,6 +256,7 @@ h1 {
 
 .range-panel {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   justify-content: space-between;
   gap: 16px;
@@ -361,6 +362,7 @@ h1 {
 
 .model-components {
   display: flex;
+  flex: 1 1 360px;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -579,6 +581,11 @@ body.light .chart-panel {
   .range-panel {
     align-items: stretch;
     flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  .model-components {
+    flex: 0 1 auto;
   }
 
   .station-summary {

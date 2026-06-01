@@ -27,6 +27,7 @@ const state = {
   cutListHtml: "",
   latestCutCursors: [],
   latestCutLabel: "",
+  baselineCache: new Map(),
   touchStart: null,
   touchGesture: null,
   touchDirection: null,
@@ -41,6 +42,71 @@ const colors = {
   gridDark: "rgba(255,255,255,0.09)",
   gridLight: "rgba(23,32,47,0.10)",
 };
+
+function ensureSeasonalityControls() {
+  const seasonalityLabel = document.querySelector("label[for='seasonalityToggle']");
+  if (seasonalityLabel) {
+    const labelText = seasonalityLabel.querySelector("span");
+    if (labelText) labelText.textContent = "Correction saisonnière";
+  }
+
+  const rangeActions = document.querySelector(".range-actions");
+  if (!seasonalityLabel || !rangeActions) return;
+
+  if (!document.querySelector(".seasonality-method")) {
+    seasonalityLabel.insertAdjacentHTML(
+      "afterend",
+      `
+        <div class="seasonality-method" aria-label="Méthode de correction saisonnière">
+          <label>
+            <input name="seasonalityMethod" type="radio" value="stl" checked />
+            <span>STL</span>
+          </label>
+          <label>
+            <input name="seasonalityMethod" type="radio" value="harmonic" />
+            <span>Harmonique</span>
+          </label>
+        </div>
+      `,
+    );
+  }
+
+  if (!document.querySelector("#climateModelToggle")) {
+    rangeActions.insertAdjacentHTML(
+      "beforebegin",
+      `
+        <label class="seasonality-toggle" for="climateModelToggle">
+          <input id="climateModelToggle" type="checkbox" />
+          <span>Modèle</span>
+        </label>
+        <div class="model-components" aria-label="Composantes du modele">
+          <label>
+            <input data-model-component="trend" type="checkbox" checked />
+            <span>Tendance</span>
+          </label>
+          <label>
+            <input data-model-component="solar11" type="checkbox" checked />
+            <span>Solaire 11a</span>
+          </label>
+          <label>
+            <input data-model-component="solar22" type="checkbox" checked />
+            <span>22a</span>
+          </label>
+          <label>
+            <input data-model-component="multidecadal" type="checkbox" checked />
+            <span>64a</span>
+          </label>
+          <label>
+            <input data-model-component="milankovic" type="checkbox" />
+            <span>Milanković</span>
+          </label>
+        </div>
+      `,
+    );
+  }
+}
+
+ensureSeasonalityControls();
 
 const elements = {
   sourceTabs: document.querySelectorAll("[data-source]"),
@@ -409,10 +475,23 @@ function displayMetricAbsolute(point, metric) {
 }
 
 function metricReferenceBaseline(metric, daily = false) {
+  const cacheKey = [
+    "reference",
+    state.dataSource,
+    state.selectedCode,
+    state.seasonalityMethod,
+    daily ? "day" : "month",
+    metric,
+  ].join("|");
+  if (state.baselineCache.has(cacheKey)) return state.baselineCache.get(cacheKey);
+
   const city = getCity();
   const series = daily && city.dailySeries?.length ? city.dailySeries : city.series;
   const range = referenceYearRange();
-  if (!series?.length || !range) return null;
+  if (!series?.length || !range) {
+    state.baselineCache.set(cacheKey, null);
+    return null;
+  }
   const [startYear, endYear] = range;
 
   const values = series
@@ -422,15 +501,32 @@ function metricReferenceBaseline(metric, daily = false) {
     })
     .map((entry) => displayMetricAbsolute(entry, metric))
     .filter(Number.isFinite);
-  if (!values.length) return null;
+  if (!values.length) {
+    state.baselineCache.set(cacheKey, null);
+    return null;
+  }
 
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  const baseline = values.reduce((sum, value) => sum + value, 0) / values.length;
+  state.baselineCache.set(cacheKey, baseline);
+  return baseline;
 }
 
 function deseasonalizedBaseline(metric) {
+  const cacheKey = [
+    "deseasonalized",
+    state.dataSource,
+    state.selectedCode,
+    state.seasonalityMethod,
+    metric,
+  ].join("|");
+  if (state.baselineCache.has(cacheKey)) return state.baselineCache.get(cacheKey);
+
   const city = getCity();
   const range = referenceYearRange();
-  if (!city?.series?.length || !range) return null;
+  if (!city?.series?.length || !range) {
+    state.baselineCache.set(cacheKey, null);
+    return null;
+  }
   const [startYear, endYear] = range;
 
   const values = city.series
@@ -440,9 +536,14 @@ function deseasonalizedBaseline(metric) {
     })
     .map((entry) => deseasonalizedMetricValue(entry, metric))
     .filter(Number.isFinite);
-  if (!values.length) return null;
+  if (!values.length) {
+    state.baselineCache.set(cacheKey, null);
+    return null;
+  }
 
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+  const baseline = values.reduce((sum, value) => sum + value, 0) / values.length;
+  state.baselineCache.set(cacheKey, baseline);
+  return baseline;
 }
 
 function anomalyMetricValue(point, datasetLabel) {
@@ -1336,6 +1437,13 @@ function filteredSeries(city) {
   });
 }
 
+function filteredDailySeries(city) {
+  if (!city.dailySeries?.length) return [];
+  const start = `${state.rangeStart}-01`;
+  const end = endOfMonthLabel(state.rangeEnd);
+  return city.dailySeries.filter((point) => point.label >= start && point.label <= end);
+}
+
 function labelIndex(series, label, fallback) {
   const index = series.findIndex((point) => point.label === label);
   return index === -1 ? fallback : index;
@@ -1721,10 +1829,11 @@ function renderChart() {
   const hiddenLabels = hiddenDatasetLabels(state.chart);
   const city = getCity();
   clampRangeToCity(city);
+  state.baselineCache.clear();
   state.visibleMode =
     selectedMonthSpan() <= 24 && city.dailySeries?.length ? "day" : "month";
   const displaySeries =
-    state.visibleMode === "day" ? city.dailySeries : city.series;
+    state.visibleMode === "day" ? filteredDailySeries(city) : city.series;
   const visibleSeries = state.removeSeasonality
     ? displaySeriesValues(displaySeries)
     : displaySeries;
@@ -1748,7 +1857,25 @@ function renderChart() {
 
   state.chart.data = data;
   state.chart.options = chartOptions();
-  state.chart.update();
+  state.chart.update("none");
+}
+
+function updateClimateModelDataset() {
+  if (!state.chart || !state.showClimateModel) {
+    renderChart();
+    return;
+  }
+
+  const modelDataset = state.chart.data.datasets.find(
+    (dataset) => dataset.label === "Modèle",
+  );
+  if (!modelDataset) {
+    renderChart();
+    return;
+  }
+
+  modelDataset.data = climateModelValues(state.visibleSeries);
+  state.chart.update("none");
 }
 
 function renderCitySelect() {
@@ -1962,7 +2089,7 @@ elements.climateComponentToggles.forEach((input) => {
   input.addEventListener("change", () => {
     state.climateComponents[input.dataset.modelComponent] = input.checked;
     state.clickedIndex = null;
-    renderChart();
+    updateClimateModelDataset();
   });
 });
 elements.themeToggle.addEventListener("click", () => {
