@@ -1,14 +1,14 @@
 import { createInterface } from "node:readline";
 import { createReadStream } from "node:fs";
-import { readdir, writeFile, mkdir, rename } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writePayloadFiles } from "./cache-output.js";
 import { addDeseasonalizedValues } from "./seasonality.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const outputPath = path.join(rootDir, "data", "monthly-temperatures.json");
-const tmpOutputPath = `${outputPath}.tmp`;
 
 const stations = [
   { city: "Paris", code: "07149", station: "ORLY" },
@@ -212,9 +212,7 @@ async function main() {
     cities
   };
 
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(tmpOutputPath, JSON.stringify(payload), "utf8");
-  await rename(tmpOutputPath, outputPath);
+  await writePayloadFiles(outputPath, payload);
   console.log(`Wrote ${path.relative(rootDir, outputPath)}`);
 }
 

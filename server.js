@@ -4,6 +4,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { dailyDirFor, summaryPathFor, writePayloadFiles } from "./scripts/cache-output.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
@@ -129,6 +130,38 @@ async function ensureCache(source) {
   return cachePath;
 }
 
+async function ensureSummaryCache(source) {
+  const cachePath = await ensureCache(source);
+  const summaryPath = summaryPathFor(cachePath);
+  const [cacheStat, summaryStat] = await Promise.all([
+    stat(cachePath),
+    stat(summaryPath).catch(() => null)
+  ]);
+
+  if (summaryStat?.mtimeMs >= cacheStat.mtimeMs) {
+    return cachePath;
+  }
+
+  await writePayloadFiles(cachePath, JSON.parse(await readFile(cachePath, "utf8")));
+  return cachePath;
+}
+
+async function ensureDailyCache(source, code) {
+  const cachePath = await ensureCache(source);
+  const dailyPath = path.join(dailyDirFor(cachePath), `${encodeURIComponent(code)}.json`);
+  const [cacheStat, dailyStat] = await Promise.all([
+    stat(cachePath),
+    stat(dailyPath).catch(() => null)
+  ]);
+
+  if (dailyStat?.mtimeMs >= cacheStat.mtimeMs) {
+    return dailyPath;
+  }
+
+  await writePayloadFiles(cachePath, JSON.parse(await readFile(cachePath, "utf8")));
+  return dailyPath;
+}
+
 async function serveStatic(request, response, url) {
   const requestPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = path.normalize(path.join(publicDir, requestPath));
@@ -183,12 +216,42 @@ const server = createServer(async (request, response) => {
 
     if (url.pathname === "/api/temperatures") {
       const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";
+      if (url.searchParams.get("summary") === "1") {
+        const cachePath = await ensureSummaryCache(source);
+        response.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store, max-age=0"
+        });
+        createReadStream(summaryPathFor(cachePath)).pipe(response);
+        return;
+      }
+
       const cachePath = await ensureCache(source);
       response.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store, max-age=0"
       });
       createReadStream(cachePath).pipe(response);
+      return;
+    }
+
+    if (url.pathname === "/api/daily") {
+      const source = url.searchParams.get("source") === "noaa" ? "noaa" : "synop";
+      const code = url.searchParams.get("code");
+      if (!code) {
+        sendJson(response, 404, { error: "Station not found" });
+        return;
+      }
+      const dailyPath = await ensureDailyCache(source, code);
+      if (!existsSync(dailyPath)) {
+        sendJson(response, 404, { error: "Station not found" });
+        return;
+      }
+      response.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store, max-age=0"
+      });
+      createReadStream(dailyPath).pipe(response);
       return;
     }
 

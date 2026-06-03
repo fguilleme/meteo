@@ -1,9 +1,10 @@
-import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writePayloadFiles } from "./cache-output.js";
 import { addDeseasonalizedValues } from "./seasonality.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,8 @@ const noaaDir = path.join(rootDir, "data", "noaa");
 const outputPath = path.join(rootDir, "data", "noaa-ghcn-france.json");
 const baseUrl = "https://www.ncei.noaa.gov/pub/data/ghcn/daily";
 const currentYear = new Date().getFullYear();
+const downloadAttempts = 3;
+const downloadTimeoutMs = 30000;
 
 function parseArgs() {
   const options = {
@@ -53,24 +56,68 @@ function parseArgs() {
   return options;
 }
 
-async function download(url, targetPath) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function errorMessage(error) {
+  return [error.message, error.cause?.message].filter(Boolean).join(" / ");
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), downloadTimeoutMs);
+  try {
+    return await fetch(url, {
+      headers: {
+        "User-Agent": "meteo-synop-dashboard/1.0 (+https://localhost)",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function download(url, targetPath, options = {}) {
   const tmpPath = `${targetPath}.tmp`;
-  console.log(`[noaa] Downloading ${url}`);
-  const response = await fetch(url);
-  if (!response.ok || !response.body) {
-    throw new Error(`Download failed for ${url}: ${response.status} ${response.statusText}`);
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= downloadAttempts; attempt += 1) {
+    console.log(`[noaa] Downloading ${url}${attempt > 1 ? ` (attempt ${attempt})` : ""}`);
+    try {
+      const response = await fetchWithTimeout(url);
+      if (!response.ok || !response.body) {
+        throw new Error(`${response.status} ${response.statusText}`);
+      }
+
+      await rm(tmpPath, { force: true });
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(tmpPath));
+      await rename(tmpPath, targetPath);
+      return;
+    } catch (error) {
+      lastError = error;
+      await rm(tmpPath, { force: true });
+      if (attempt < downloadAttempts) {
+        console.warn(`[noaa] Download failed for ${url}: ${errorMessage(error)}; retrying`);
+        await sleep(1000 * attempt);
+      }
+    }
   }
 
-  await rm(tmpPath, { force: true });
-  await pipeline(Readable.fromWeb(response.body), createWriteStream(tmpPath));
-  await rename(tmpPath, targetPath);
+  if (options.allowCached && existsSync(targetPath)) {
+    console.warn(`[noaa] Using cached ${path.relative(rootDir, targetPath)} after download failure: ${errorMessage(lastError)}`);
+    return;
+  }
+
+  throw new Error(`Download failed for ${url}: ${errorMessage(lastError)}`);
 }
 
 async function downloadMetadata() {
   await mkdir(noaaDir, { recursive: true });
   const files = ["ghcnd-stations.txt", "ghcnd-inventory.txt"];
   for (const file of files) {
-    await download(`${baseUrl}/${file}`, path.join(noaaDir, file));
+    await download(`${baseUrl}/${file}`, path.join(noaaDir, file), { allowCached: true });
   }
 }
 
@@ -210,7 +257,7 @@ async function main() {
   const cities = [];
   for (const station of selected) {
     const stationPath = path.join(noaaDir, `${station.id}.dly`);
-    await download(`${baseUrl}/all/${station.id}.dly`, stationPath);
+    await download(`${baseUrl}/all/${station.id}.dly`, stationPath, { allowCached: true });
     const dailySeries = parseDailyFile(await readFile(stationPath, "utf8"));
     const series = monthlySeries(dailySeries);
     addDeseasonalizedValues(series, 25, {
@@ -247,8 +294,7 @@ async function main() {
     cities,
   };
 
-  await writeFile(`${outputPath}.tmp`, JSON.stringify(payload), "utf8");
-  await rename(`${outputPath}.tmp`, outputPath);
+  await writePayloadFiles(outputPath, payload);
   console.log(`[noaa] Wrote ${path.relative(rootDir, outputPath)}`);
 }
 

@@ -28,6 +28,7 @@ const state = {
   latestCutCursors: [],
   latestCutLabel: "",
   baselineCache: new Map(),
+  dailySeriesLoads: new Set(),
   touchStart: null,
   touchGesture: null,
   touchDirection: null,
@@ -1852,12 +1853,14 @@ function renderChart() {
       data,
       options: chartOptions(),
     });
+    loadDailySeriesForVisibleRange(city);
     return;
   }
 
   state.chart.data = data;
   state.chart.options = chartOptions();
   state.chart.update("none");
+  loadDailySeriesForVisibleRange(city);
 }
 
 function updateClimateModelDataset() {
@@ -1876,6 +1879,43 @@ function updateClimateModelDataset() {
 
   modelDataset.data = climateModelValues(state.visibleSeries);
   state.chart.update("none");
+}
+
+function needsDailySeries(city) {
+  return (
+    selectedMonthSpan() <= 24 &&
+    !city.dailySeries?.length &&
+    (city.dailyCount ?? 0) > 0
+  );
+}
+
+async function loadDailySeriesForVisibleRange(city = getCity()) {
+  if (!needsDailySeries(city)) return;
+  const source = state.dataSource;
+  const code = city.code;
+  const cacheKey = `${source}:${code}`;
+  if (state.dailySeriesLoads.has(cacheKey)) return;
+
+  state.dailySeriesLoads.add(cacheKey);
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (state.dataSource !== source || state.selectedCode !== code) return;
+    const response = await fetch(
+      `/api/daily?source=${source}&code=${encodeURIComponent(code)}&v=${Date.now()}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) throw new Error("Impossible de charger les donnees journalieres");
+    const payload = await response.json();
+    if (state.dataSource !== source || state.selectedCode !== code) return;
+    const targetCity = getCity();
+    targetCity.dailySeries = payload.dailySeries ?? [];
+    targetCity.dailyCount = targetCity.dailySeries.length;
+    renderChart();
+  } catch (error) {
+    console.warn(error.message);
+  } finally {
+    state.dailySeriesLoads.delete(cacheKey);
+  }
 }
 
 function renderCitySelect() {
@@ -2016,7 +2056,7 @@ function alignWindowToEnd() {
 
 async function loadData(source = state.dataSource) {
   state.dataSource = source;
-  const response = await fetch(`/api/temperatures?source=${state.dataSource}&v=${Date.now()}`, {
+  const response = await fetch(`/api/temperatures?source=${state.dataSource}&summary=1&v=${Date.now()}`, {
     cache: "no-store",
   });
   if (!response.ok) throw new Error("Impossible de charger les donnees");
