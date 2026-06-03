@@ -2025,6 +2025,8 @@ function syncSourceControls() {
     state.showClimateModel = false;
     elements.climateModelToggle.checked = false;
   }
+  const modelComponents = elements.climateComponentToggles[0]?.closest(".model-components");
+  if (modelComponents) modelComponents.hidden = !state.showClimateModel;
 }
 
 function setWindowFromNumbers(startNumber, endNumber) {

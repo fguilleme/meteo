@@ -255,11 +255,8 @@ h1 {
 }
 
 .range-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  gap: 14px;
   margin: 0 0 16px;
   padding: 14px;
   border: 1px solid var(--line);
@@ -269,9 +266,24 @@ h1 {
   animation: rise 680ms ease both;
 }
 
+.range-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.range-row-window {
+  justify-content: space-between;
+}
+
+.range-row-main {
+  justify-content: flex-start;
+}
+
 .range-actions {
   display: flex;
-  align-items: end;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
@@ -291,7 +303,6 @@ h1 {
 .window-status strong {
   color: var(--text);
   font-size: 1rem;
-  padding-bottom: 10px;
 }
 
 .seasonality-toggle {
@@ -362,10 +373,13 @@ h1 {
 
 .model-components {
   display: flex;
-  flex: 1 1 360px;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.model-components[hidden] {
+  display: none;
 }
 
 .model-components label {
@@ -439,23 +453,16 @@ body.light .chart-panel {
   background: rgba(255, 255, 255, 0.86);
 }
 
-.end-date-panel {
-  display: flex;
-  justify-content: center;
-  margin: 12px 0 0;
-  animation: rise 760ms ease both;
-}
-
 .end-date-control {
   display: grid;
-  grid-template-columns: auto minmax(180px, 240px);
+  grid-template-columns: auto minmax(160px, 200px);
   align-items: center;
   gap: 10px;
-  padding: 10px;
+  min-height: 40px;
+  padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel), transparent 8%);
-  box-shadow: var(--shadow);
+  background: var(--panel-2);
 }
 
 .end-date-control span {
@@ -467,11 +474,10 @@ body.light .chart-panel {
 
 .end-date-control input {
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
   color-scheme: dark;
@@ -484,7 +490,7 @@ body.light .end-date-control input {
 }
 
 .end-date-control input:focus {
-  border-color: var(--accent);
+  outline: 0;
 }
 
 .cut-list-panel {
@@ -626,14 +632,8 @@ body.light .end-date-control input {
     justify-content: flex-start;
   }
 
-  .range-panel {
-    align-items: stretch;
-    flex-direction: column;
+  .range-row-window {
     justify-content: flex-start;
-  }
-
-  .model-components {
-    flex: 0 1 auto;
   }
 
   .station-summary {
@@ -656,13 +656,35 @@ body.light .end-date-control input {
     padding: 10px;
   }
 
-  .end-date-panel {
-    justify-content: stretch;
+  .range-panel {
+    padding: 12px;
+  }
+
+  .range-row {
+    align-items: stretch;
+  }
+
+  .window-status,
+  .end-date-control,
+  .seasonality-toggle,
+  .seasonality-method {
+    width: 100%;
+  }
+
+  .range-actions {
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .range-button {
+    flex: 0 0 auto;
   }
 
   .end-date-control {
-    width: 100%;
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .end-date-control input {
