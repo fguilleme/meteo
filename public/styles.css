@@ -439,6 +439,54 @@ body.light .chart-panel {
   background: rgba(255, 255, 255, 0.86);
 }
 
+.end-date-panel {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0 0;
+  animation: rise 760ms ease both;
+}
+
+.end-date-control {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 240px);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel), transparent 8%);
+  box-shadow: var(--shadow);
+}
+
+.end-date-control span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.end-date-control input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  color-scheme: dark;
+  font-weight: 800;
+  outline: none;
+}
+
+body.light .end-date-control input {
+  color-scheme: light;
+}
+
+.end-date-control input:focus {
+  border-color: var(--accent);
+}
+
 .cut-list-panel {
   width: min(100%, 480px);
   margin: 14px auto 0;
@@ -606,6 +654,19 @@ body.light .chart-panel {
   .chart-panel {
     min-height: 360px;
     padding: 10px;
+  }
+
+  .end-date-panel {
+    justify-content: stretch;
+  }
+
+  .end-date-control {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .end-date-control input {
+    font-size: 1rem;
   }
 
   .cut-list-panel {
