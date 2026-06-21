@@ -25,6 +25,7 @@ const state = {
   rangeStart: null,
   rangeEnd: null,
   rangeEndDate: null,
+  lockEndToLatest: false,
   cutListHtml: "",
   latestCutCursors: [],
   latestCutLabel: "",
@@ -200,6 +201,12 @@ function updateRangeLabelFromChart(chart) {
 }
 
 function setChartXWindow(chart, min, max) {
+  if (state.lockEndToLatest) {
+    const lastIndex = chart.data.labels.length - 1;
+    const span = Math.max(1, max - min);
+    max = lastIndex;
+    min = Math.max(0, lastIndex - span);
+  }
   const range = clampChartWindow(chart, min, max);
   chart.options.scales.x.min = range.min;
   chart.options.scales.x.max = range.max;
@@ -210,19 +217,23 @@ function setChartXWindow(chart, min, max) {
 function visibleEndDate(chart) {
   if (!chart?.data?.labels?.length) return null;
   const labels = chart.data.labels;
+  const limit = dataEndDate(getCity());
+  let value = null;
   if (state.visibleMode === "day") {
     const time = axisTimeAt(rightmostVisibleValue(chart));
-    if (Number.isFinite(time)) return new Date(time).toISOString().slice(0, 10);
+    if (Number.isFinite(time)) value = new Date(time).toISOString().slice(0, 10);
   }
-
-  const max = Math.max(
-    0,
-    Math.min(
-      labels.length - 1,
-      Math.floor(chart.scales.x.max ?? labels.length - 1),
-    ),
-  );
-  return endOfMonthLabel(labels[max].slice(0, 7));
+  if (!value) {
+    const max = Math.max(
+      0,
+      Math.min(
+        labels.length - 1,
+        Math.floor(chart.scales.x.max ?? labels.length - 1),
+      ),
+    );
+    value = endOfMonthLabel(labels[max].slice(0, 7));
+  }
+  return limit && value > limit ? limit : value;
 }
 
 function panChartByPixels(chart, startMin, startMax, pixelDelta) {
@@ -1448,12 +1459,15 @@ function clampRangeToCity(city) {
     state.rangeStart = first;
     state.rangeEnd = last;
   }
+  const dataEnd = dataEndDate(city);
+  const monthEnd = endOfMonthLabel(state.rangeEnd);
+  const upperBound = dataEnd && dataEnd < monthEnd ? dataEnd : monthEnd;
   if (
     !state.rangeEndDate ||
     state.rangeEndDate < `${state.rangeEnd}-01` ||
-    state.rangeEndDate > endOfMonthLabel(state.rangeEnd)
+    state.rangeEndDate > upperBound
   ) {
-    state.rangeEndDate = endOfMonthLabel(state.rangeEnd);
+    state.rangeEndDate = upperBound;
   }
 
   syncRangeControls(city);
@@ -1490,6 +1504,13 @@ function endOfMonthLabel(monthLabel) {
   return value.toISOString().slice(0, 10);
 }
 
+function dataEndDate(city) {
+  const dailyLast = city?.dailySeries?.at(-1)?.label;
+  if (dailyLast) return dailyLast;
+  const monthlyLast = city?.series?.at(-1)?.label;
+  return monthlyLast ? endOfMonthLabel(monthlyLast) : null;
+}
+
 function selectedMonthSpan() {
   return monthToNumber(state.rangeEnd) - monthToNumber(state.rangeStart) + 1;
 }
@@ -1515,9 +1536,9 @@ function syncRangeControls(city = getCity()) {
   const last = city.series.at(-1)?.label;
   if (!first || !last) return;
 
-  elements.endDateInput.disabled = false;
+  elements.endDateInput.disabled = state.lockEndToLatest;
   elements.endDateInput.min = `${first}-01`;
-  elements.endDateInput.max = endOfMonthLabel(last);
+  elements.endDateInput.max = dataEndDate(city) ?? endOfMonthLabel(last);
   elements.endDateInput.value = state.rangeEndDate ?? endOfMonthLabel(state.rangeEnd);
 }
 
@@ -2050,6 +2071,7 @@ function setWindowFromNumbers(startNumber, endNumber) {
 }
 
 function applyZoomSetting(zoom, align = "center") {
+  if (state.lockEndToLatest) align = "end";
   state.activePreset = zoom;
   const city = getCity();
   const firstNumber = monthToNumber(city.series[0].label);
@@ -2102,6 +2124,16 @@ function alignWindowToEnd() {
   setChartXWindow(state.chart, min, lastIndex);
 }
 
+function setEndLock(locked) {
+  state.lockEndToLatest = locked;
+  if (elements.alignEnd) {
+    elements.alignEnd.classList.toggle("is-active", locked);
+    elements.alignEnd.setAttribute("aria-pressed", locked ? "true" : "false");
+  }
+  if (elements.endDateInput) elements.endDateInput.disabled = locked;
+  if (locked) alignWindowToEnd();
+}
+
 function endDateIndexForSeries(series, value) {
   if (!series.length) return -1;
   const label = state.visibleMode === "day" ? value : value.slice(0, 7);
@@ -2111,6 +2143,7 @@ function endDateIndexForSeries(series, value) {
 }
 
 function applyEndDateSelection() {
+  if (state.lockEndToLatest) return;
   const value = elements.endDateInput?.value;
   if (!value) return;
 
@@ -2178,7 +2211,8 @@ elements.citySelect.addEventListener("change", () => {
 elements.zoomButtons.forEach((button) => {
   button.addEventListener("click", () => applyZoomSetting(button.dataset.zoom));
 });
-elements.alignEnd.addEventListener("click", alignWindowToEnd);
+elements.alignEnd.addEventListener("click", () => setEndLock(!state.lockEndToLatest));
+elements.alignEnd.setAttribute("aria-pressed", "false");
 elements.endDateInput?.addEventListener("change", applyEndDateSelection);
 elements.seasonalityToggle.addEventListener("change", () => {
   state.removeSeasonality = elements.seasonalityToggle.checked;

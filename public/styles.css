@@ -442,6 +442,12 @@ h1 {
   color: var(--accent);
 }
 
+.align-end-button.is-active {
+  background: var(--accent);
+  color: var(--panel);
+  border-color: var(--accent);
+}
+
 .chart-panel {
   position: relative;
   height: min(68vh, 720px);
