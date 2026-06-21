@@ -112,10 +112,17 @@ const cacheBuilders = {
   noaa: "update-noaa-ghcn.js"
 };
 const cacheReady = new Map();
+const rebuildInFlight = new Map();
 
 async function rebuildSource(source) {
-  cacheReady.set(source, runScript(cacheBuilders[source]));
-  await cacheReady.get(source);
+  if (!rebuildInFlight.has(source)) {
+    const promise = runScript(cacheBuilders[source]).finally(() => {
+      rebuildInFlight.delete(source);
+    });
+    rebuildInFlight.set(source, promise);
+    cacheReady.set(source, promise);
+  }
+  await rebuildInFlight.get(source);
 }
 
 async function ensureCache(source) {
@@ -166,7 +173,7 @@ async function serveStatic(request, response, url) {
   const requestPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   const filePath = path.normalize(path.join(publicDir, requestPath));
 
-  if (!filePath.startsWith(publicDir)) {
+  if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) {
     response.writeHead(403);
     response.end("Forbidden");
     return;
