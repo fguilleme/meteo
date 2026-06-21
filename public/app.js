@@ -200,12 +200,16 @@ function updateRangeLabelFromChart(chart) {
   loadDailySeriesForVisibleRange();
 }
 
-function setChartXWindow(chart, min, max) {
+function setChartXWindow(chart, min, max, options = {}) {
   if (state.lockEndToLatest) {
     const lastIndex = chart.data.labels.length - 1;
-    const span = Math.max(1, max - min);
-    max = lastIndex;
-    min = Math.max(0, lastIndex - span);
+    if (options.intent === "pan" && max < lastIndex - 0.5) {
+      setEndLock(false);
+    } else {
+      const span = Math.max(1, max - min);
+      max = lastIndex;
+      min = Math.max(0, lastIndex - span);
+    }
   }
   const range = clampChartWindow(chart, min, max);
   chart.options.scales.x.min = range.min;
@@ -240,7 +244,7 @@ function panChartByPixels(chart, startMin, startMax, pixelDelta) {
   const width = Math.max(1, chart.chartArea.right - chart.chartArea.left);
   const span = Math.max(1, startMax - startMin);
   const dataDelta = (-pixelDelta / width) * span;
-  setChartXWindow(chart, startMin + dataDelta, startMax + dataDelta);
+  setChartXWindow(chart, startMin + dataDelta, startMax + dataDelta, { intent: "pan" });
 }
 
 function zoomChartAtPixel(chart, startMin, startMax, anchorPixel, ratio) {
@@ -1703,6 +1707,16 @@ function chartOptions() {
           },
           mode: "x",
           onZoomComplete({ chart }) {
+            if (state.lockEndToLatest) {
+              const lastIndex = chart.data.labels.length - 1;
+              const currentMax = chart.scales.x.max ?? lastIndex;
+              if (currentMax < lastIndex - 0.5) {
+                const currentMin = chart.scales.x.min ?? 0;
+                const span = Math.max(1, currentMax - currentMin);
+                setChartXWindow(chart, lastIndex - span, lastIndex);
+                return;
+              }
+            }
             updateRangeLabelFromChart(chart);
           },
         },
