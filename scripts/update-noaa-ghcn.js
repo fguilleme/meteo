@@ -19,7 +19,7 @@ const downloadTimeoutMs = 30000;
 function parseArgs() {
   const options = {
     startYear: Number(process.env.NOAA_START_YEAR) || 1920,
-    endYear: Number(process.env.NOAA_END_YEAR) || currentYear - 1,
+    endYear: Number(process.env.NOAA_END_YEAR) || currentYear,
   };
 
   const args = process.argv.slice(2);
@@ -157,11 +157,20 @@ function parseInventory(text) {
 
 function selectStations(stations, inventory, options) {
   const selected = [];
+  let droppedStart = 0;
+  let droppedEnd = 0;
   for (const [id, item] of inventory) {
     if (!item.TMIN || !item.TMAX || !stations.has(id)) continue;
     const first = Math.max(item.TMIN.first, item.TMAX.first);
     const last = Math.min(item.TMIN.last, item.TMAX.last);
-    if (first > options.startYear || last < options.endYear) continue;
+    if (first > options.startYear) {
+      droppedStart += 1;
+      continue;
+    }
+    if (last < options.endYear) {
+      droppedEnd += 1;
+      continue;
+    }
     selected.push({
       ...stations.get(id),
       firstYear: first,
@@ -169,6 +178,7 @@ function selectStations(stations, inventory, options) {
     });
   }
 
+  console.log(`[noaa] Excluded ${droppedStart} stations starting after ${options.startYear}, ${droppedEnd} stations ending before ${options.endYear}`);
   return selected.sort((a, b) => a.firstYear - b.firstYear || a.name.localeCompare(b.name));
 }
 
