@@ -20,6 +20,8 @@ function parseArgs() {
   const options = {
     startYear: Number(process.env.NOAA_START_YEAR) || 1920,
     endYear: Number(process.env.NOAA_END_YEAR) || currentYear,
+    legacyStartYear: Number(process.env.NOAA_LEGACY_START_YEAR) || 1910,
+    legacyEndYear: Number(process.env.NOAA_LEGACY_END_YEAR) || currentYear - 5,
   };
 
   const args = process.argv.slice(2);
@@ -43,6 +45,24 @@ function parseArgs() {
       options.endYear = Number(arg.slice("--end-year=".length));
       continue;
     }
+    if (arg === "--legacy-start-year") {
+      options.legacyStartYear = Number(args[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg === "--legacy-end-year") {
+      options.legacyEndYear = Number(args[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--legacy-start-year=")) {
+      options.legacyStartYear = Number(arg.slice("--legacy-start-year=".length));
+      continue;
+    }
+    if (arg.startsWith("--legacy-end-year=")) {
+      options.legacyEndYear = Number(arg.slice("--legacy-end-year=".length));
+      continue;
+    }
     throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -51,6 +71,12 @@ function parseArgs() {
   }
   if (!Number.isInteger(options.endYear) || options.endYear < options.startYear) {
     throw new Error(`Invalid NOAA_END_YEAR: ${options.endYear}`);
+  }
+  if (!Number.isInteger(options.legacyStartYear) || options.legacyStartYear < 1800) {
+    throw new Error(`Invalid NOAA_LEGACY_START_YEAR: ${options.legacyStartYear}`);
+  }
+  if (!Number.isInteger(options.legacyEndYear) || options.legacyEndYear < options.legacyStartYear) {
+    throw new Error(`Invalid NOAA_LEGACY_END_YEAR: ${options.legacyEndYear}`);
   }
 
   return options;
@@ -163,12 +189,11 @@ function selectStations(stations, inventory, options) {
     if (!item.TMIN || !item.TMAX || !stations.has(id)) continue;
     const first = Math.max(item.TMIN.first, item.TMAX.first);
     const last = Math.min(item.TMIN.last, item.TMAX.last);
-    if (first > options.startYear) {
-      droppedStart += 1;
-      continue;
-    }
-    if (last < options.endYear) {
-      droppedEnd += 1;
+    const meetsModern = first <= options.startYear && last >= options.endYear;
+    const meetsLegacy = first <= options.legacyStartYear && last >= options.legacyEndYear;
+    if (!meetsModern && !meetsLegacy) {
+      if (first > options.startYear && first > options.legacyStartYear) droppedStart += 1;
+      else droppedEnd += 1;
       continue;
     }
     selected.push({
@@ -178,7 +203,11 @@ function selectStations(stations, inventory, options) {
     });
   }
 
-  console.log(`[noaa] Excluded ${droppedStart} stations starting after ${options.startYear}, ${droppedEnd} stations ending before ${options.endYear}`);
+  console.log(
+    `[noaa] Excluded ${droppedStart} stations starting after ${options.startYear}, ` +
+    `${droppedEnd} stations ending before ${options.endYear} ` +
+    `(legacy tier: start <= ${options.legacyStartYear} and end >= ${options.legacyEndYear})`
+  );
   return selected.sort((a, b) => a.firstYear - b.firstYear || a.name.localeCompare(b.name));
 }
 
