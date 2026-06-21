@@ -96,6 +96,8 @@ async function processFile(fileName) {
   const lines = createInterface({ input: stream, crlfDelay: Infinity });
 
   let lineNumber = 0;
+  let firstDate = null;
+  let lastDate = null;
   for await (const line of lines) {
     lineNumber += 1;
     if (lineNumber === 1 || !line) continue;
@@ -118,6 +120,10 @@ async function processFile(fileName) {
     const month = monthFromIso(validityTime);
     if (!month) continue;
 
+    const day = validityTime.slice(0, 10);
+    if (!firstDate || day < firstDate) firstDate = day;
+    if (!lastDate || day > lastDate) lastDate = day;
+
     const celsius = kelvin - 273.15;
     const bucket = getMonthlyBucket(code, year, month);
     if (celsius < bucket.min) {
@@ -131,7 +137,7 @@ async function processFile(fileName) {
     bucket.sum += celsius;
     bucket.count += 1;
 
-    const dailyBucket = getDailyBucket(code, validityTime.slice(0, 10));
+    const dailyBucket = getDailyBucket(code, day);
     if (celsius < dailyBucket.min) {
       dailyBucket.min = celsius;
       dailyBucket.minDate = validityTime;
@@ -144,7 +150,8 @@ async function processFile(fileName) {
     dailyBucket.count += 1;
   }
 
-  console.log(`Processed ${fileName}`);
+  const range = firstDate ? `${firstDate} -> ${lastDate}` : "no data";
+  console.log(`Processed ${fileName} (${range})`);
 }
 
 async function main() {

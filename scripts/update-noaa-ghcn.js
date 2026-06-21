@@ -259,6 +259,10 @@ async function main() {
     const stationPath = path.join(noaaDir, `${station.id}.dly`);
     await download(`${baseUrl}/all/${station.id}.dly`, stationPath, { allowCached: true });
     const dailySeries = parseDailyFile(await readFile(stationPath, "utf8"));
+    const range = dailySeries.length
+      ? `${dailySeries[0].label} -> ${dailySeries.at(-1).label} (${dailySeries.length} days)`
+      : "no data";
+    console.log(`[noaa] ${station.id} ${station.name}: ${range}`);
     const series = monthlySeries(dailySeries);
     addDeseasonalizedValues(series, 25, {
       stl: { trendSpan: 25, seasonalSpan: 21, iterations: 3 }
