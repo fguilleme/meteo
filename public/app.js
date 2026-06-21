@@ -168,6 +168,10 @@ function isLight() {
   return document.body.classList.contains("light");
 }
 
+function isCoarsePointer() {
+  return typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+}
+
 function clampChartWindow(chart, min, max) {
   const lastIndex = chart.data.labels.length - 1;
   const span = Math.max(1, max - min);
@@ -1649,7 +1653,10 @@ function chartOptions() {
       legend: {
         labels: {
           color: textColor,
-          boxWidth: 12,
+          boxWidth: isCoarsePointer() ? 22 : 12,
+          boxHeight: isCoarsePointer() ? 22 : 12,
+          padding: isCoarsePointer() ? 22 : 10,
+          font: { size: isCoarsePointer() ? 15 : 12 },
           usePointStyle: true,
         },
       },
