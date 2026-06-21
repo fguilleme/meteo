@@ -1141,6 +1141,7 @@ function drawExtremeCursor(chart, extreme, label, field, align) {
 }
 
 function drawVisibleExtremes(chart) {
+  if (state.showAnomalies) return;
   drawExtremeCursor(
     chart,
     extremePoint(chart, "Max", (value, best) => value > best),
