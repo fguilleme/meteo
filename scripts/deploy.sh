@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REMOTE="${REMOTE:-root@2.24.11.61}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/meteo}"
+REMOTE="${REMOTE:-francois@192.168.1.36}"
+REMOTE_DIR="${REMOTE_DIR:-/home/francois/meteo}"
 
 echo "[deploy] Target: ${REMOTE}:${REMOTE_DIR}"
 
