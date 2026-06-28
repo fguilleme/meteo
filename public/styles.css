@@ -378,7 +378,8 @@ h1 {
   cursor: not-allowed;
 }
 
-.model-components {
+.model-components,
+.regression-components {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -387,11 +388,13 @@ h1 {
   max-width: 100%;
 }
 
-.model-components[hidden] {
+.model-components[hidden],
+.regression-components[hidden] {
   display: none;
 }
 
-.model-components label {
+.model-components label,
+.regression-components label {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -406,15 +409,33 @@ h1 {
   font-weight: 800;
 }
 
-.model-components input {
+.model-components input,
+.regression-components input {
   accent-color: var(--accent);
 }
 
-.model-components:has(input:disabled) {
+.regression-equation {
+  min-height: 32px;
+  max-width: 100%;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--line), var(--text) 18%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-2), transparent 18%);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.model-components:has(input:disabled),
+.regression-components:has(input:disabled) {
   opacity: 0.52;
 }
 
-.model-components label:has(input:disabled) {
+.model-components label:has(input:disabled),
+.regression-components label:has(input:disabled) {
   cursor: not-allowed;
 }
 
