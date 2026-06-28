@@ -1039,8 +1039,10 @@ function visibleIndexRange(chart) {
 }
 
 function extremePoint(chart, datasetLabel, compare) {
-  const dataset = chart.data.datasets.find((item) => item.label === datasetLabel);
+  const datasetIndex = chart.data.datasets.findIndex((item) => item.label === datasetLabel);
+  const dataset = chart.data.datasets[datasetIndex];
   if (!dataset) return null;
+  if (datasetIndex >= 0 && !chart.isDatasetVisible(datasetIndex)) return null;
 
   const { start, end } = visibleIndexRange(chart);
   let best = null;
@@ -1072,7 +1074,7 @@ function rawExtremeValue(extreme, datasetLabel) {
   return extreme.value;
 }
 
-function drawExtremeCursor(chart, extreme, label, field, align) {
+function drawExtremeCursor(chart, extreme, datasetLabel, label, field, align, yOffset = 0) {
   if (!extreme) return;
 
   const { ctx, chartArea, scales } = chart;
@@ -1087,15 +1089,12 @@ function drawExtremeCursor(chart, extreme, label, field, align) {
     return;
   }
 
-  const datasetLabel = label === "Chaud" ? "Max" : "Min";
   const content = formatDatasetContent(
     extreme.point,
     datasetLabel,
     rawExtremeValue(extreme, datasetLabel),
   );
-  const text = state.removeSeasonality
-    ? `${content} · ${extremePointDate(extreme, field)}`
-    : `${label} ${content} · ${extremePointDate(extreme, field)}`;
+  const text = `${label} ${content} · ${extremePointDate(extreme, field)}`;
   ctx.save();
   ctx.font = "800 11px system-ui, sans-serif";
   const textWidth = ctx.measureText(text).width;
@@ -1108,7 +1107,7 @@ function drawExtremeCursor(chart, extreme, label, field, align) {
   const lineEnd = preferRight ? x + lineLength + 7 : x - 7;
   let boxX = preferRight ? lineEnd + 6 : lineStart - boxWidth - 6;
   boxX = Math.max(chartArea.left + 4, Math.min(chartArea.right - boxWidth - 4, boxX));
-  let boxY = y - boxHeight / 2;
+  let boxY = y - boxHeight / 2 + yOffset;
   boxY = Math.max(chartArea.top + 4, Math.min(chartArea.bottom - boxHeight - 4, boxY));
 
   ctx.strokeStyle = extreme.color;
@@ -1146,20 +1145,24 @@ function drawExtremeCursor(chart, extreme, label, field, align) {
 
 function drawVisibleExtremes(chart) {
   if (state.showAnomalies) return;
-  drawExtremeCursor(
-    chart,
-    extremePoint(chart, "Max", (value, best) => value > best),
-    "Chaud",
-    "maxDate",
-    "left",
-  );
-  drawExtremeCursor(
-    chart,
-    extremePoint(chart, "Min", (value, best) => value < best),
-    "Froid",
-    "minDate",
-    "right",
-  );
+  const markers = [
+    ["Max", "+ chaud", "maxDate", "left", -13, (value, best) => value > best],
+    ["Max", "+ froid", "maxDate", "left", 13, (value, best) => value < best],
+    ["Min", "+ chaud", "minDate", "right", -13, (value, best) => value > best],
+    ["Min", "+ froid", "minDate", "right", 13, (value, best) => value < best],
+  ];
+
+  markers.forEach(([datasetLabel, label, field, align, yOffset, compare]) => {
+    drawExtremeCursor(
+      chart,
+      extremePoint(chart, datasetLabel, compare),
+      datasetLabel,
+      label,
+      field,
+      align,
+      yOffset,
+    );
+  });
 }
 
 function renderCutList(cursors, activeLabel) {
