@@ -1625,8 +1625,8 @@ function filteredSeries(city) {
 
 function fullDisplaySeries(city) {
   return state.visibleMode === "day" && city.dailySeries?.length
-    ? city.dailySeries
-    : city.series;
+    ? regularDailySeries(city.dailySeries)
+    : regularMonthlySeries(city.series);
 }
 
 function labelIndex(series, label, fallback) {
@@ -1666,6 +1666,61 @@ function monthLabelFromNumber(value) {
   const year = Math.floor((value - 1) / 12);
   const month = ((value - 1) % 12) + 1;
   return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function dayLabelFromNumber(value) {
+  return new Date(value * 86400000).toISOString().slice(0, 10);
+}
+
+function emptyMonthlyPoint(label) {
+  const [year, month] = label.split("-").map(Number);
+  return {
+    label,
+    year,
+    month,
+    min: null,
+    avg: null,
+    max: null,
+    count: 0,
+    missing: true,
+  };
+}
+
+function emptyDailyPoint(label) {
+  return {
+    label,
+    min: null,
+    avg: null,
+    max: null,
+    count: 0,
+    missing: true,
+  };
+}
+
+function regularMonthlySeries(series) {
+  if (!series?.length) return [];
+  const byLabel = new Map(series.map((point) => [point.label, point]));
+  const first = monthToNumber(series[0].label);
+  const last = monthToNumber(series.at(-1).label);
+  const output = [];
+  for (let value = first; value <= last; value += 1) {
+    const label = monthLabelFromNumber(value);
+    output.push(byLabel.get(label) ?? emptyMonthlyPoint(label));
+  }
+  return output;
+}
+
+function regularDailySeries(series) {
+  if (!series?.length) return [];
+  const byLabel = new Map(series.map((point) => [point.label, point]));
+  const first = dayToNumber(series[0].label);
+  const last = dayToNumber(series.at(-1).label);
+  const output = [];
+  for (let value = first; value <= last; value += 1) {
+    const label = dayLabelFromNumber(value);
+    output.push(byLabel.get(label) ?? emptyDailyPoint(label));
+  }
+  return output;
 }
 
 function syncRangeControls(city = getCity()) {
@@ -1715,24 +1770,28 @@ function monthTickInterval(span) {
   return 1;
 }
 
-function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd) {
+function shouldShowAxisTick(label, index, span, visibleStart, visibleEnd, labels = []) {
   if (state.visibleMode === "day") {
     if (span <= 45 && (index === visibleStart || index === visibleEnd)) return true;
     const date = new Date(`${label}T00:00:00Z`);
     if (span <= 45) {
       return (index - visibleStart) % dayTickInterval(span) === 0;
     }
+    const previous = labels[index - 1];
+    const monthChanged = !previous || previous.slice(0, 7) !== label.slice(0, 7);
     return (
-      date.getUTCDate() === 1 &&
+      monthChanged &&
       date.getUTCMonth() % dayTickInterval(span) === 0
     );
   }
 
   const [year, month] = label.split("-").map(Number);
-  if (span <= 36 && (index === visibleStart || index === visibleEnd)) return true;
+  if (index === visibleStart || index === visibleEnd) return true;
   if (span <= 36) return (month - 1) % monthTickInterval(span) === 0;
   const yearInterval = Math.max(1, monthTickInterval(span) / 12);
-  return month === 1 && year % yearInterval === 0;
+  const previous = labels[index - 1];
+  const yearChanged = !previous || Number(previous.slice(0, 4)) !== year;
+  return yearChanged && year % yearInterval === 0;
 }
 
 function axisTickLabel(label, index, span, visibleStart) {
@@ -1781,8 +1840,16 @@ function chartOptions() {
       mode: "index",
       intersect: false,
     },
+    layout: {
+      padding: {
+        top: isCoarsePointer() ? 10 : 6,
+        right: isCoarsePointer() ? 8 : 4,
+        left: isCoarsePointer() ? 14 : 8,
+      },
+    },
     plugins: {
       legend: {
+        align: "start",
         labels: {
           color: textColor,
           boxWidth: isCoarsePointer() ? 22 : 12,
@@ -1888,7 +1955,7 @@ function chartOptions() {
             const span = Math.max(1, visibleEnd - visibleStart);
 
             if (
-              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd)
+              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd, labels)
             ) {
               return axisTickLabel(label, value, span, visibleStart);
             }
@@ -1912,7 +1979,7 @@ function chartOptions() {
             const span = Math.max(1, visibleEnd - visibleStart);
             const visibleTick =
               label &&
-              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd);
+              shouldShowAxisTick(label, value, span, visibleStart, visibleEnd, labels);
             if (!visibleTick) return "rgba(0, 0, 0, 0)";
             return isLight() ? colors.gridLight : colors.gridDark;
           },
@@ -1946,6 +2013,7 @@ function chartOptions() {
 
 function cityDatasets(series) {
   const datasets = [];
+  const gapSpan = state.visibleMode === "day" ? 14 : 2;
 
   if (state.removeSeasonality && !state.showAnomalies) {
     datasets.push(
@@ -1957,6 +2025,7 @@ function cityDatasets(series) {
         backgroundColor: "rgba(255, 107, 107, 0.06)",
         borderWidth: 0.6,
         pointRadius: 0,
+        spanGaps: gapSpan,
         tension: 0.28,
       },
       {
@@ -1967,6 +2036,7 @@ function cityDatasets(series) {
         backgroundColor: "rgba(247, 178, 103, 0.08)",
         borderWidth: 0.6,
         pointRadius: 0,
+        spanGaps: gapSpan,
         tension: 0.28,
       },
       {
@@ -1977,6 +2047,7 @@ function cityDatasets(series) {
         backgroundColor: "rgba(54, 209, 196, 0.07)",
         borderWidth: 0.6,
         pointRadius: 0,
+        spanGaps: gapSpan,
         tension: 0.28,
       },
     );
@@ -1990,6 +2061,7 @@ function cityDatasets(series) {
       backgroundColor: "rgba(255, 107, 107, 0.14)",
       borderWidth: 2,
       pointRadius: 0,
+      spanGaps: gapSpan,
       tension: 0.28,
     },
     {
@@ -1999,6 +2071,7 @@ function cityDatasets(series) {
       backgroundColor: "rgba(247, 178, 103, 0.18)",
       borderWidth: 3,
       pointRadius: 0,
+      spanGaps: gapSpan,
       tension: 0.28,
     },
     {
@@ -2008,6 +2081,7 @@ function cityDatasets(series) {
       backgroundColor: "rgba(54, 209, 196, 0.16)",
       borderWidth: 2,
       pointRadius: 0,
+      spanGaps: gapSpan,
       tension: 0.28,
     },
   );
@@ -2022,6 +2096,7 @@ function cityDatasets(series) {
       borderDash: [8, 7],
       borderWidth: 2,
       pointRadius: 0,
+      spanGaps: gapSpan,
       tension: 0.32,
     });
   }
@@ -2034,9 +2109,9 @@ function cityDatasets(series) {
       data: result.values,
       borderColor: isLight() ? "rgba(27, 92, 110, 0.88)" : "rgba(158, 219, 255, 0.88)",
       backgroundColor: "rgba(158, 219, 255, 0.08)",
-      borderDash: [4, 5],
       borderWidth: 2.2,
       pointRadius: 0,
+      spanGaps: gapSpan,
       tension: state.regressionType === "linear" ? 0 : 0.2,
     });
   }
