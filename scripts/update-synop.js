@@ -9,7 +9,9 @@ import { spawn } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
-const baseUrl = "https://object.files.data.gouv.fr/meteofrance/data/synchro_ftp/OBS/SYNOP";
+const baseUrl =
+  process.env.SYNOP_BASE_URL ||
+  "https://meteofrance.s3.sbg.io.cloud.ovh.net/data/synchro_ftp/OBS/SYNOP";
 const downloadTimeoutMs = Number(process.env.SYNOP_DOWNLOAD_TIMEOUT_MS) || 10 * 60 * 1000;
 
 function parseArgs() {
