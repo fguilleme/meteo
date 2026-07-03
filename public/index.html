@@ -108,21 +108,6 @@
           <span>Modèle</span>
         </label>
       </div>
-      <div class="range-row regression-components" aria-label="Type de regression" hidden>
-        <label>
-          <input name="regressionType" type="radio" value="linear" checked />
-          <span>Linéaire</span>
-        </label>
-        <label>
-          <input name="regressionType" type="radio" value="quadratic" />
-          <span>Quadratique</span>
-        </label>
-        <label>
-          <input name="regressionType" type="radio" value="cubic" />
-          <span>Cubique</span>
-        </label>
-        <output class="regression-equation" id="regressionEquation">-</output>
-      </div>
       <div class="range-row model-components" aria-label="Composantes du modele" hidden>
         <label>
           <input data-model-component="trend" type="checkbox" checked />
@@ -153,7 +138,7 @@
     <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
   </main>
 
-  <script src="/app.js?v=regression-overlay-20260628"></script>
+  <script src="/app.js?v=linear-regression-20260703"></script>
 </body>
 
 </html>

@@ -15,7 +15,6 @@ const state = {
   seasonalityMethod: "stl",
   showAnomalies: false,
   showRegression: false,
-  regressionType: "linear",
   showClimateModel: false,
   climateComponents: {
     trend: true,
@@ -47,6 +46,12 @@ const colors = {
   gridDark: "rgba(255,255,255,0.09)",
   gridLight: "rgba(23,32,47,0.10)",
 };
+
+const regressionMetrics = [
+  { metric: "max", label: "Régr. max", labelOffset: -18 },
+  { metric: "avg", label: "Régr. moy", labelOffset: 0 },
+  { metric: "min", label: "Régr. min", labelOffset: 18 },
+];
 
 function ensureSeasonalityControls() {
   const seasonalityLabel = document.querySelector("label[for='seasonalityToggle']");
@@ -125,8 +130,6 @@ const elements = {
   seasonalityMethodInputs: document.querySelectorAll("[name='seasonalityMethod']"),
   anomalyToggle: document.querySelector("#anomalyToggle"),
   regressionToggle: document.querySelector("#regressionToggle"),
-  regressionTypeInputs: document.querySelectorAll("[name='regressionType']"),
-  regressionEquation: document.querySelector("#regressionEquation"),
   climateModelToggle: document.querySelector("#climateModelToggle"),
   climateComponentToggles: document.querySelectorAll("[data-model-component]"),
   zoomButtons: document.querySelectorAll("[data-zoom]"),
@@ -167,10 +170,6 @@ const shortMonthFormatter = new Intl.DateTimeFormat("fr-FR", {
 const compactTemperatureFormatter = new Intl.NumberFormat("fr-FR", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
-});
-
-const coefficientFormatter = new Intl.NumberFormat("fr-FR", {
-  maximumFractionDigits: 4,
 });
 
 function isLight() {
@@ -917,123 +916,52 @@ function climateModelValues(series) {
   return rawValues.map((value) => (Number.isFinite(value) ? value - baseline : null));
 }
 
-function regressionDegree() {
-  if (state.regressionType === "cubic") return 3;
-  if (state.regressionType === "quadratic") return 2;
-  return 1;
-}
-
-function solveLinearSystem(matrix, vector) {
-  const size = vector.length;
-  const rows = matrix.map((row, index) => [...row, vector[index]]);
-
-  for (let pivot = 0; pivot < size; pivot += 1) {
-    let bestRow = pivot;
-    for (let row = pivot + 1; row < size; row += 1) {
-      if (Math.abs(rows[row][pivot]) > Math.abs(rows[bestRow][pivot])) {
-        bestRow = row;
-      }
-    }
-    if (Math.abs(rows[bestRow][pivot]) < 1e-12) return null;
-    if (bestRow !== pivot) [rows[pivot], rows[bestRow]] = [rows[bestRow], rows[pivot]];
-
-    const divisor = rows[pivot][pivot];
-    for (let column = pivot; column <= size; column += 1) {
-      rows[pivot][column] /= divisor;
-    }
-
-    for (let row = 0; row < size; row += 1) {
-      if (row === pivot) continue;
-      const factor = rows[row][pivot];
-      for (let column = pivot; column <= size; column += 1) {
-        rows[row][column] -= factor * rows[pivot][column];
-      }
-    }
-  }
-
-  return rows.map((row) => row[size]);
-}
-
 function emptyRegressionResult(series) {
   return {
     values: series.map(() => null),
-    coefficients: null,
+    slope: null,
   };
 }
 
-function regressionResult(series, startIndex = 0, endIndex = series.length - 1) {
-  const degree = regressionDegree();
+function regressionResult(series, metric, startIndex = 0, endIndex = series.length - 1) {
   const samples = [];
   for (let index = Math.max(0, startIndex); index <= Math.min(series.length - 1, endIndex); index += 1) {
     const point = series[index];
     const year = timeYear(point);
-    const value = point?.avg;
+    const value = point?.[metric];
     if (Number.isFinite(year) && Number.isFinite(value)) samples.push({ year, value });
   }
-  if (samples.length < degree + 2) return emptyRegressionResult(series);
+  if (samples.length < 2) return emptyRegressionResult(series);
 
-  const powers = (year) => {
-    const x = year - 1900;
-    return Array.from({ length: degree + 1 }, (_, power) => x ** power);
-  };
-
-  const size = degree + 1;
-  const matrix = Array.from({ length: size }, () => Array(size).fill(0));
-  const vector = Array(size).fill(0);
+  const meanYear = samples.reduce((sum, sample) => sum + sample.year, 0) / samples.length;
+  const meanValue = samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length;
+  let numerator = 0;
+  let denominator = 0;
   samples.forEach((sample) => {
-    const row = powers(sample.year);
-    for (let i = 0; i < size; i += 1) {
-      vector[i] += row[i] * sample.value;
-      for (let j = 0; j < size; j += 1) matrix[i][j] += row[i] * row[j];
-    }
+    const x = sample.year - meanYear;
+    numerator += x * (sample.value - meanValue);
+    denominator += x * x;
   });
+  if (denominator < 1e-12) return emptyRegressionResult(series);
 
-  const coefficients = solveLinearSystem(matrix, vector);
-  if (!coefficients) return emptyRegressionResult(series);
+  const slope = numerator / denominator;
+  const intercept = meanValue - slope * meanYear;
   const values = series.map((point) => {
     const year = timeYear(point);
     if (!Number.isFinite(year)) return null;
-    const row = powers(year);
-    return row.reduce((sum, value, index) => sum + value * coefficients[index], 0);
+    return intercept + slope * year;
   });
-  return { values, coefficients };
+  return { values, slope };
 }
 
-function regressionValues(series, startIndex = 0, endIndex = series.length - 1) {
-  return regressionResult(series, startIndex, endIndex).values;
-}
-
-function formatCoefficient(value) {
-  if (!Number.isFinite(value)) return "n/a";
-  const abs = Math.abs(value);
-  if (abs >= 1000 || (abs > 0 && abs < 0.0001)) return value.toExponential(3);
-  return coefficientFormatter.format(value);
-}
-
-function regressionEquationText(result) {
-  if (!result?.coefficients) return "Coefficients indisponibles";
-  const degree = result.coefficients.length - 1;
-  const names = ["a", "b", "c", "d"];
-  const equationTerms = [];
-  const coefficientTerms = [];
-
-  for (let power = degree; power >= 0; power -= 1) {
-    const name = names[degree - power] ?? `a${power}`;
-    const suffix = power === 0 ? "" : power === 1 ? " x" : ` x^${power}`;
-    equationTerms.push(`${name}${suffix}`);
-    coefficientTerms.push(`${name}=${formatCoefficient(result.coefficients[power])}`);
-  }
-
-  return `t = ${equationTerms.join(" + ")} · ${coefficientTerms.join(" · ")} · x=année-1900`;
-}
-
-function updateRegressionEquation(result = null) {
-  if (!elements.regressionEquation) return;
-  if (!state.showRegression) {
-    elements.regressionEquation.textContent = "";
-    return;
-  }
-  elements.regressionEquation.textContent = regressionEquationText(result);
+function formatRegressionSlope(slope) {
+  if (!Number.isFinite(slope)) return "";
+  const formatter = new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: Math.abs(slope) < 0.1 ? 3 : 2,
+    maximumFractionDigits: Math.abs(slope) < 0.1 ? 3 : 2,
+    signDisplay: "always",
+  });
+  return `${formatter.format(slope)} °C/an`;
 }
 
 function thresholdStarts(chart, threshold, targetLabel) {
@@ -1341,6 +1269,73 @@ function sortedCutRows(cursor) {
     });
 }
 
+function drawRegressionSlopeLabels(chart) {
+  if (!state.showRegression || !state.removeSeasonality) return;
+
+  const { ctx, chartArea, scales } = chart;
+  const visibleMin = Number.isFinite(scales.x.min) ? scales.x.min : 0;
+  const visibleMax = Number.isFinite(scales.x.max)
+    ? scales.x.max
+    : chart.data.labels.length - 1;
+  const span = Math.max(1, visibleMax - visibleMin);
+  const xValue = Math.max(visibleMin, visibleMax - span * 0.07);
+  const x = scales.x.getPixelForValue(xValue);
+  if (x < chartArea.left || x > chartArea.right) return;
+
+  const panelColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--panel")
+    .trim();
+  const textColor = getComputedStyle(document.documentElement)
+    .getPropertyValue("--text")
+    .trim();
+
+  ctx.save();
+  ctx.font = "800 11px system-ui, sans-serif";
+  chart.data.datasets.forEach((dataset, index) => {
+    if (!dataset.regression || !chart.isDatasetVisible(index)) return;
+    const text = formatRegressionSlope(dataset.regressionSlope);
+    if (!text) return;
+
+    const value = interpolatedDataValue(dataset.data, xValue);
+    if (!Number.isFinite(value)) return;
+    const y = scales.y.getPixelForValue(value);
+    if (y < chartArea.top || y > chartArea.bottom) return;
+
+    const paddingX = 7;
+    const boxHeight = 20;
+    const boxWidth = ctx.measureText(text).width + paddingX * 2;
+    let boxX = x + 8;
+    if (boxX + boxWidth > chartArea.right - 4) boxX = x - boxWidth - 8;
+    boxX = Math.max(chartArea.left + 4, Math.min(chartArea.right - boxWidth - 4, boxX));
+    let boxY = y - boxHeight / 2 + (dataset.slopeLabelOffset ?? 0);
+    boxY = Math.max(chartArea.top + 4, Math.min(chartArea.bottom - boxHeight - 4, boxY));
+
+    ctx.fillStyle = dataset.borderColor;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    roundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 7);
+    ctx.fillStyle = panelColor;
+    ctx.globalAlpha = 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = dataset.borderColor;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = textColor;
+    ctx.fillText(text, boxX + paddingX, boxY + 14);
+  });
+  ctx.restore();
+}
+
+const regressionSlopeLabelsPlugin = {
+  id: "regressionSlopeLabels",
+  afterDraw(chart) {
+    drawRegressionSlopeLabels(chart);
+  },
+};
+
 const rightEdgeCursorPlugin = {
   id: "rightEdgeCursor",
   afterDraw(chart) {
@@ -1579,6 +1574,7 @@ const alternatingYearBandsPlugin = {
 Chart.register(
   alternatingYearBandsPlugin,
   rightEdgeCursorPlugin,
+  regressionSlopeLabelsPlugin,
   clickTooltipPlugin,
 );
 
@@ -1865,8 +1861,16 @@ function chartOptions() {
           return !context.dataset.rawOverlay;
         },
         itemSort(a, b) {
-          const order = { Max: 0, Moy: 1, Min: 2, "Régression": 3, "Modèle": 4 };
-          return order[a.dataset.label] - order[b.dataset.label];
+          const order = {
+            Max: 0,
+            Moy: 1,
+            Min: 2,
+            "Régr. max": 3,
+            "Régr. moy": 4,
+            "Régr. min": 5,
+            "Modèle": 6,
+          };
+          return (order[a.dataset.label] ?? 99) - (order[b.dataset.label] ?? 99);
         },
         callbacks: {
           title(items) {
@@ -1879,8 +1883,8 @@ function chartOptions() {
             if (datasetLabel === "Modèle") {
               return `Modèle ${formatValue(context.parsed.y)}`;
             }
-            if (datasetLabel === "Régression") {
-              return `Régression ${formatValue(context.parsed.y)}`;
+            if (context.dataset.regression) {
+              return `${datasetLabel} ${formatValue(context.parsed.y)}`;
             }
             const value = formatDatasetContent(point, datasetLabel, context.parsed.y);
             if (datasetLabel === "Min") {
@@ -2102,17 +2106,23 @@ function cityDatasets(series) {
   }
 
   if (state.showRegression && state.removeSeasonality) {
-    const result = regressionResult(series);
-    datasets.push({
-      label: "Régression",
-      regression: true,
-      data: result.values,
-      borderColor: isLight() ? "rgba(27, 92, 110, 0.88)" : "rgba(158, 219, 255, 0.88)",
-      backgroundColor: "rgba(158, 219, 255, 0.08)",
-      borderWidth: 2.2,
-      pointRadius: 0,
-      spanGaps: gapSpan,
-      tension: state.regressionType === "linear" ? 0 : 0.2,
+    regressionMetrics.forEach((config) => {
+      const result = regressionResult(series, config.metric);
+      datasets.push({
+        label: config.label,
+        regression: true,
+        regressionMetric: config.metric,
+        regressionSlope: result.slope,
+        slopeLabelOffset: config.labelOffset,
+        data: result.values,
+        borderColor: colors[config.metric],
+        backgroundColor: "rgba(158, 219, 255, 0.08)",
+        borderDash: [8, 5],
+        borderWidth: 2,
+        pointRadius: 0,
+        spanGaps: gapSpan,
+        tension: 0,
+      });
     });
   }
 
@@ -2199,20 +2209,18 @@ function updateClimateModelDataset() {
 
 function updateRegressionDataset() {
   if (!state.chart || !state.showRegression) {
-    updateRegressionEquation();
     return;
   }
-  const regressionDataset = state.chart.data.datasets.find(
-    (dataset) => dataset.label === "Régression",
+  const regressionDatasets = state.chart.data.datasets.filter(
+    (dataset) => dataset.regression,
   );
-  if (!regressionDataset) {
-    updateRegressionEquation();
-    return;
-  }
+  if (!regressionDatasets.length) return;
   const { start, end } = visibleIndexRange(state.chart);
-  const result = regressionResult(state.visibleSeries, start, end);
-  regressionDataset.data = result.values;
-  updateRegressionEquation(result);
+  regressionDatasets.forEach((dataset) => {
+    const result = regressionResult(state.visibleSeries, dataset.regressionMetric, start, end);
+    dataset.data = result.values;
+    dataset.regressionSlope = result.slope;
+  });
   state.chart.update("none");
 }
 
@@ -2290,10 +2298,6 @@ function syncSourceControls() {
   elements.anomalyToggle.checked = state.showAnomalies;
   elements.regressionToggle.checked = state.showRegression;
   elements.climateModelToggle.checked = state.showClimateModel;
-  elements.regressionTypeInputs.forEach((input) => {
-    input.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality || !state.showRegression;
-    input.checked = input.value === state.regressionType;
-  });
   elements.climateComponentToggles.forEach((input) => {
     input.disabled =
       !hasDeseasonalizedTrend ||
@@ -2324,9 +2328,6 @@ function syncSourceControls() {
     state.showClimateModel = false;
     elements.climateModelToggle.checked = false;
   }
-  const regressionComponents = elements.regressionTypeInputs[0]?.closest(".regression-components");
-  if (regressionComponents) regressionComponents.hidden = !state.showRegression;
-  updateRegressionEquation();
   const modelComponents = elements.climateComponentToggles[0]?.closest(".model-components");
   if (modelComponents) modelComponents.hidden = !state.showClimateModel;
 }
@@ -2527,14 +2528,6 @@ elements.regressionToggle.addEventListener("change", () => {
   state.clickedIndex = null;
   syncSourceControls();
   renderChart();
-});
-elements.regressionTypeInputs.forEach((input) => {
-  input.addEventListener("change", () => {
-    if (!input.checked) return;
-    state.regressionType = input.value;
-    state.clickedIndex = null;
-    updateRegressionDataset();
-  });
 });
 elements.climateModelToggle.addEventListener("change", () => {
   state.showClimateModel = elements.climateModelToggle.checked;
