@@ -1201,7 +1201,7 @@ function drawExtremeCursor(chart, extreme, datasetLabel, label, field, align, yO
 }
 
 function drawVisibleExtremes(chart) {
-  if (state.showAnomalies) return;
+  if (state.removeSeasonality || state.showAnomalies) return;
   const markers = [
     ["Max", "+ chaud", "maxDate", "left", -13, (value, best) => value > best],
     ["Max", "+ froid", "maxDate", "left", 13, (value, best) => value < best],
@@ -1339,6 +1339,11 @@ const regressionSlopeLabelsPlugin = {
 const rightEdgeCursorPlugin = {
   id: "rightEdgeCursor",
   afterDraw(chart) {
+    if (state.removeSeasonality) {
+      updateCutListPanel("");
+      return;
+    }
+
     const index = rightmostVisibleIndex(chart);
     if (index < 0) {
       updateCutListPanel("");
