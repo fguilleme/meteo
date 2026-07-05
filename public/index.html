@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Meteo SYNOP/NOAA France</title>
-  <link rel="stylesheet" href="/styles.css?v=seasonality-model-20260601" />
+  <link rel="stylesheet" href="/styles.css?v=compact-chart-top-20260705" />
   <script src="/vendor/chart.umd.js"></script>
   <script src="/vendor/hammer.min.js"></script>
   <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -103,10 +103,6 @@
       </div>
       <div class="range-row model-components" aria-label="Composantes du modele" hidden>
         <label>
-          <input data-model-component="trend" type="checkbox" checked />
-          <span>Tendance</span>
-        </label>
-        <label>
           <input data-model-component="solar11" type="checkbox" checked />
           <span>Solaire 11a</span>
         </label>
@@ -131,7 +127,7 @@
     <section class="cut-list-panel" id="cutListPanel" aria-live="polite" hidden></section>
   </main>
 
-  <script src="/app.js?v=linear-regression-20260703"></script>
+  <script src="/app.js?v=compact-chart-top-20260705"></script>
 </body>
 
 </html>

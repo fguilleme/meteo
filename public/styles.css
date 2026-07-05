@@ -407,7 +407,7 @@ h1 {
   position: relative;
   height: min(68vh, 720px);
   min-height: 440px;
-  padding: 18px;
+  padding: 10px 18px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(17, 21, 28, 0.82);

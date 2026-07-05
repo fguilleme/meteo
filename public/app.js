@@ -17,7 +17,6 @@ const state = {
   showRegression: false,
   showClimateModel: false,
   climateComponents: {
-    trend: true,
     solar11: true,
     solar22: true,
     multidecadal: true,
@@ -72,10 +71,6 @@ function ensureSeasonalityControls() {
           <span>Modèle</span>
         </label>
         <div class="model-components" aria-label="Composantes du modele">
-          <label>
-            <input data-model-component="trend" type="checkbox" checked />
-            <span>Tendance</span>
-          </label>
           <label>
             <input data-model-component="solar11" type="checkbox" checked />
             <span>Solaire 11a</span>
@@ -842,19 +837,10 @@ function climateCycleFeatures(year, centerYear, period) {
   return [Math.sin(angle), Math.cos(angle)];
 }
 
-function normalizedRamp(year, startYear, endYear) {
-  if (endYear <= startYear) return 0;
-  return Math.max(0, Math.min(1, (year - startYear) / (endYear - startYear)));
-}
-
 function climateModelRawValue(year, startYear, endYear) {
   let value = 0;
   const centerYear = (startYear + endYear) / 2;
 
-  if (state.climateComponents.trend) {
-    const ramp = normalizedRamp(year, startYear, endYear);
-    value += 1.35 * ramp ** 1.7;
-  }
   if (state.climateComponents.solar11) {
     const [sin, cos] = climateCycleFeatures(year, 1902.3, 10.8);
     value += 0.06 * sin + 0.02 * cos;
@@ -877,9 +863,13 @@ function climateModelRawValue(year, startYear, endYear) {
   return value;
 }
 
-function climateModelValues(series) {
+function climateModelValues(series, startIndex = 0, endIndex = series.length - 1) {
   const years = series.map(timeYear);
-  const validYears = years.filter(Number.isFinite);
+  const start = Math.max(0, Math.floor(startIndex));
+  const end = Math.min(series.length - 1, Math.ceil(endIndex));
+  const validYears = years.filter((year, index) =>
+    index >= start && index <= end && Number.isFinite(year),
+  );
   if (validYears.length < 24) return series.map(() => null);
 
   const startYear = Math.min(...validYears);
@@ -887,15 +877,11 @@ function climateModelValues(series) {
   const rawValues = years.map((year) =>
     Number.isFinite(year) ? climateModelRawValue(year, startYear, endYear) : null,
   );
-  const range = referenceYearRange();
   const referenceValues = rawValues.filter((value, index) => {
-    const year = years[index];
     return (
       Number.isFinite(value) &&
-      Number.isFinite(year) &&
-      range &&
-      year >= range[0] &&
-      year <= range[1]
+      index >= start &&
+      index <= end
     );
   });
   const baseline = referenceValues.length
@@ -1587,8 +1573,72 @@ const alternatingYearBandsPlugin = {
   },
 };
 
+function climateModelHeatColor(value, maxAbs) {
+  if (!Number.isFinite(value) || !Number.isFinite(maxAbs) || maxAbs <= 0) {
+    return isLight() ? "rgba(92, 103, 120, 0.18)" : "rgba(139, 150, 168, 0.16)";
+  }
+  const intensity = Math.min(1, Math.abs(value) / maxAbs);
+  const alpha = 0.2 + intensity * 0.62;
+  return value >= 0
+    ? `rgba(255, 107, 107, ${alpha})`
+    : `rgba(54, 209, 196, ${alpha})`;
+}
+
+const climateModelHeatmapPlugin = {
+  id: "climateModelHeatmap",
+  beforeLayout(chart) {
+    const yScale = chart.options.scales?.y;
+    if (!yScale) return;
+    yScale.grace = state.showClimateModel && state.removeSeasonality ? "6%" : 0;
+  },
+  beforeDatasetsDraw(chart) {
+    if (!state.showClimateModel || !state.removeSeasonality || !state.visibleSeries.length) return;
+
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    const visibleMin = Number.isFinite(xScale.min) ? xScale.min : 0;
+    const visibleMax = Number.isFinite(xScale.max)
+      ? xScale.max
+      : chart.data.labels.length - 1;
+    const start = Math.max(0, Math.floor(visibleMin) - 1);
+    const end = Math.min(state.visibleSeries.length - 1, Math.ceil(visibleMax) + 1);
+    const values = climateModelValues(state.visibleSeries, visibleMin, visibleMax);
+    const finiteValues = values
+      .slice(start, end + 1)
+      .filter(Number.isFinite);
+    if (!finiteValues.length) return;
+
+    const maxAbs = Math.max(...finiteValues.map((value) => Math.abs(value)));
+    const height = isCoarsePointer() ? 16 : 12;
+    const y = chartArea.top + 3;
+
+    ctx.save();
+    ctx.beginPath();
+    roundedRect(ctx, chartArea.left, y, chartArea.right - chartArea.left, height, 6);
+    ctx.clip();
+    for (let index = start; index <= end; index += 1) {
+      const value = values[index];
+      if (!Number.isFinite(value)) continue;
+      const left = Math.max(chartArea.left, xScale.getPixelForValue(index - 0.5));
+      const right = Math.min(chartArea.right, xScale.getPixelForValue(index + 0.5));
+      if (right <= chartArea.left || left >= chartArea.right || right <= left) continue;
+      ctx.fillStyle = climateModelHeatColor(value, maxAbs);
+      ctx.fillRect(left, y, right - left, height);
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = isLight() ? "rgba(23, 32, 47, 0.24)" : "rgba(243, 246, 251, 0.22)";
+    ctx.lineWidth = 1;
+    roundedRect(ctx, chartArea.left, y, chartArea.right - chartArea.left, height, 6);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
 Chart.register(
   alternatingYearBandsPlugin,
+  climateModelHeatmapPlugin,
   rightEdgeCursorPlugin,
   regressionSlopeLabelsPlugin,
   clickTooltipPlugin,
@@ -1854,7 +1904,13 @@ function chartOptions() {
     },
     layout: {
       padding: {
-        top: isCoarsePointer() ? 10 : 6,
+        top:
+          (isCoarsePointer() ? 8 : 4) +
+          (state.showClimateModel && state.removeSeasonality
+            ? isCoarsePointer()
+              ? 14
+              : 10
+            : 0),
         right: isCoarsePointer() ? 8 : 4,
         left: isCoarsePointer() ? 14 : 8,
       },
@@ -1884,7 +1940,6 @@ function chartOptions() {
             "Régr. max": 3,
             "Régr. moy": 4,
             "Régr. min": 5,
-            "Modèle": 6,
           };
           return (order[a.dataset.label] ?? 99) - (order[b.dataset.label] ?? 99);
         },
@@ -1896,9 +1951,6 @@ function chartOptions() {
           label(context) {
             const point = state.visibleSeries[context.dataIndex];
             const datasetLabel = context.dataset.label;
-            if (datasetLabel === "Modèle") {
-              return `Modèle ${formatValue(context.parsed.y)}`;
-            }
             if (context.dataset.regression) {
               return `${datasetLabel} ${formatValue(context.parsed.y)}`;
             }
@@ -2106,21 +2158,6 @@ function cityDatasets(series) {
     },
   );
 
-  if (state.showClimateModel && state.removeSeasonality && state.showAnomalies) {
-    datasets.push({
-      label: "Modèle",
-      climateModel: true,
-      data: climateModelValues(series),
-      borderColor: isLight() ? "rgba(35, 45, 64, 0.82)" : "rgba(244, 248, 255, 0.86)",
-      backgroundColor: "rgba(244, 248, 255, 0.08)",
-      borderDash: [8, 7],
-      borderWidth: 2,
-      pointRadius: 0,
-      spanGaps: gapSpan,
-      tension: 0.32,
-    });
-  }
-
   if (state.showRegression && state.removeSeasonality) {
     regressionMetrics.forEach((config) => {
       const result = regressionResult(series, config.metric);
@@ -2206,20 +2243,8 @@ function renderChart() {
 }
 
 function updateClimateModelDataset() {
-  if (!state.chart || !state.showClimateModel) {
-    renderChart();
-    return;
-  }
-
-  const modelDataset = state.chart.data.datasets.find(
-    (dataset) => dataset.label === "Modèle",
-  );
-  if (!modelDataset) {
-    renderChart();
-    return;
-  }
-
-  modelDataset.data = climateModelValues(state.visibleSeries);
+  if (!state.chart) return;
+  state.chart.options = chartOptions();
   state.chart.update("none");
 }
 
@@ -2302,8 +2327,7 @@ function syncSourceControls() {
   elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
   elements.anomalyToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
   elements.regressionToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
-  elements.climateModelToggle.disabled =
-    !hasDeseasonalizedTrend || !state.removeSeasonality || !state.showAnomalies;
+  elements.climateModelToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
   elements.anomalyToggle.checked = state.showAnomalies;
   elements.regressionToggle.checked = state.showRegression;
   elements.climateModelToggle.checked = state.showClimateModel;
@@ -2311,7 +2335,6 @@ function syncSourceControls() {
     input.disabled =
       !hasDeseasonalizedTrend ||
       !state.removeSeasonality ||
-      !state.showAnomalies ||
       !state.showClimateModel;
     input.checked = Boolean(state.climateComponents[input.dataset.modelComponent]);
   });
@@ -2331,10 +2354,6 @@ function syncSourceControls() {
     state.showClimateModel = false;
     elements.anomalyToggle.checked = false;
     elements.regressionToggle.checked = false;
-    elements.climateModelToggle.checked = false;
-  }
-  if (!state.showAnomalies) {
-    state.showClimateModel = false;
     elements.climateModelToggle.checked = false;
   }
   const modelComponents = elements.climateComponentToggles[0]?.closest(".model-components");
@@ -2518,7 +2537,6 @@ elements.seasonalityToggle.addEventListener("change", () => {
 });
 elements.anomalyToggle.addEventListener("change", () => {
   state.showAnomalies = elements.anomalyToggle.checked;
-  if (!state.showAnomalies) state.showClimateModel = false;
   state.clickedIndex = null;
   syncSourceControls();
   renderChart();
@@ -2530,6 +2548,13 @@ elements.regressionToggle.addEventListener("change", () => {
   renderChart();
 });
 elements.climateModelToggle.addEventListener("change", () => {
+  if (!state.removeSeasonality) {
+    state.showClimateModel = false;
+    elements.climateModelToggle.checked = false;
+    syncSourceControls();
+    renderChart();
+    return;
+  }
   state.showClimateModel = elements.climateModelToggle.checked;
   state.clickedIndex = null;
   syncSourceControls();
