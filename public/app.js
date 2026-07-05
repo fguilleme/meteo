@@ -12,7 +12,7 @@ const state = {
   clickedIndex: null,
   activePreset: "2y",
   removeSeasonality: false,
-  seasonalityMethod: "stl",
+  seasonalityMethod: "harmonic",
   showAnomalies: false,
   showRegression: false,
   showClimateModel: false,
@@ -63,24 +63,6 @@ function ensureSeasonalityControls() {
   const rangeActions = document.querySelector(".range-actions");
   if (!seasonalityLabel || !rangeActions) return;
 
-  if (!document.querySelector(".seasonality-method")) {
-    seasonalityLabel.insertAdjacentHTML(
-      "afterend",
-      `
-        <div class="seasonality-method" aria-label="Méthode de correction saisonnière">
-          <label>
-            <input name="seasonalityMethod" type="radio" value="stl" checked />
-            <span>STL</span>
-          </label>
-          <label>
-            <input name="seasonalityMethod" type="radio" value="harmonic" />
-            <span>Harmonique</span>
-          </label>
-        </div>
-      `,
-    );
-  }
-
   if (!document.querySelector("#climateModelToggle")) {
     rangeActions.insertAdjacentHTML(
       "beforebegin",
@@ -127,7 +109,6 @@ const elements = {
   currentCode: document.querySelector("#currentCode"),
   windowLabel: document.querySelector("#windowLabel"),
   seasonalityToggle: document.querySelector("#seasonalityToggle"),
-  seasonalityMethodInputs: document.querySelectorAll("[name='seasonalityMethod']"),
   anomalyToggle: document.querySelector("#anomalyToggle"),
   regressionToggle: document.querySelector("#regressionToggle"),
   climateModelToggle: document.querySelector("#climateModelToggle"),
@@ -2029,9 +2010,9 @@ function chartOptions() {
           display: true,
           text:
             state.removeSeasonality && state.showAnomalies
-              ? `Anomalie désaisonnalisée ${state.seasonalityMethod === "stl" ? "STL" : "harmonique"} (°C)`
+              ? "Anomalie désaisonnalisée harmonique (°C)"
               : state.removeSeasonality
-                ? `Température désaisonnalisée ${state.seasonalityMethod === "stl" ? "STL" : "harmonique"} (°C)`
+                ? "Température désaisonnalisée harmonique (°C)"
                 : "Température (°C)",
           color: mutedColor,
         },
@@ -2314,18 +2295,11 @@ function syncSourceControls() {
   const hasDeseasonalizedTrend = payloadSupportsDeseasonalizedTrend();
   const selectedMethodSupported = payloadSupportsSeasonalityMethod(state.seasonalityMethod);
   if (hasDeseasonalizedTrend && !selectedMethodSupported) {
-    state.seasonalityMethod = payloadSupportsSeasonalityMethod("stl")
-      ? "stl"
-      : "harmonic";
+    state.seasonalityMethod = payloadSupportsSeasonalityMethod("harmonic")
+      ? "harmonic"
+      : "stl";
   }
   elements.seasonalityToggle.disabled = !hasDeseasonalizedTrend;
-  elements.seasonalityMethodInputs.forEach((input) => {
-    input.disabled =
-      !hasDeseasonalizedTrend ||
-      !state.removeSeasonality ||
-      !payloadSupportsSeasonalityMethod(input.value);
-    input.checked = input.value === state.seasonalityMethod;
-  });
   elements.anomalyToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
   elements.regressionToggle.disabled = !hasDeseasonalizedTrend || !state.removeSeasonality;
   elements.climateModelToggle.disabled =
@@ -2541,15 +2515,6 @@ elements.seasonalityToggle.addEventListener("change", () => {
   state.clickedIndex = null;
   syncSourceControls();
   renderChart();
-});
-elements.seasonalityMethodInputs.forEach((input) => {
-  input.addEventListener("change", () => {
-    if (!input.checked) return;
-    state.seasonalityMethod = input.value;
-    state.clickedIndex = null;
-    syncSourceControls();
-    renderChart();
-  });
 });
 elements.anomalyToggle.addEventListener("change", () => {
   state.showAnomalies = elements.anomalyToggle.checked;
