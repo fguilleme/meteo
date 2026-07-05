@@ -764,6 +764,14 @@ function axisTimeAt(value) {
   return timeLow + (timeHigh - timeLow) * (value - low);
 }
 
+function axisYearAt(value) {
+  const time = axisTimeAt(value);
+  if (!Number.isFinite(time)) return null;
+  const date = new Date(time);
+  const year = date.getUTCFullYear();
+  return year + (time - Date.UTC(year, 0, 1)) / (365.2425 * 24 * 60 * 60 * 1000);
+}
+
 function rightmostVisibleIndex(chart) {
   const labels = chart.data.labels;
   if (!labels.length) return -1;
@@ -1269,6 +1277,28 @@ function sortedCutRows(cursor) {
     });
 }
 
+function visibleRegressionSlope(dataset, visibleMin, visibleMax) {
+  const left = Math.max(0, visibleMin);
+  const right = Math.min(dataset.data.length - 1, visibleMax);
+  if (right <= left) return dataset.regressionSlope;
+
+  const leftValue = interpolatedDataValue(dataset.data, left);
+  const rightValue = interpolatedDataValue(dataset.data, right);
+  const leftYear = axisYearAt(left);
+  const rightYear = axisYearAt(right);
+  if (
+    !Number.isFinite(leftValue) ||
+    !Number.isFinite(rightValue) ||
+    !Number.isFinite(leftYear) ||
+    !Number.isFinite(rightYear) ||
+    Math.abs(rightYear - leftYear) < 1e-9
+  ) {
+    return dataset.regressionSlope;
+  }
+
+  return (rightValue - leftValue) / (rightYear - leftYear);
+}
+
 function drawRegressionSlopeLabels(chart) {
   if (!state.showRegression || !state.removeSeasonality) return;
 
@@ -1293,7 +1323,7 @@ function drawRegressionSlopeLabels(chart) {
   ctx.font = "800 11px system-ui, sans-serif";
   chart.data.datasets.forEach((dataset, index) => {
     if (!dataset.regression || !chart.isDatasetVisible(index)) return;
-    const text = formatRegressionSlope(dataset.regressionSlope);
+    const text = formatRegressionSlope(visibleRegressionSlope(dataset, visibleMin, visibleMax));
     if (!text) return;
 
     const value = interpolatedDataValue(dataset.data, xValue);
