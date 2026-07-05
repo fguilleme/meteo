@@ -15,6 +15,26 @@ const baseUrl = "https://www.ncei.noaa.gov/pub/data/ghcn/daily";
 const currentYear = new Date().getFullYear();
 const downloadAttempts = 3;
 const downloadTimeoutMs = 30000;
+const curatedGlobalStations = [
+  { id: "UK000056225", continent: "Europe" },
+  { id: "BE000006447", continent: "Europe" },
+  { id: "AU000005901", continent: "Europe" },
+  { id: "CA007024280", continent: "Amérique du Nord" },
+  { id: "USW00094728", continent: "Amérique du Nord" },
+  { id: "MXM00076491", continent: "Amérique du Nord" },
+  { id: "AR000875850", continent: "Amérique du Sud" },
+  { id: "UY000086490", continent: "Amérique du Sud" },
+  { id: "PE000084752", continent: "Amérique du Sud" },
+  { id: "SG000061612", continent: "Afrique" },
+  { id: "AGE00147718", continent: "Afrique" },
+  { id: "NG000001090", continent: "Afrique" },
+  { id: "CE000434730", continent: "Asie" },
+  { id: "KZ000035700", continent: "Asie" },
+  { id: "JA000047420", continent: "Asie" },
+  { id: "ASN00090015", continent: "Océanie" },
+  { id: "NZ000939450", continent: "Océanie" },
+  { id: "FJM00091680", continent: "Océanie" },
+];
 
 function parseArgs() {
   const options = {
@@ -150,7 +170,7 @@ async function downloadMetadata() {
 function parseStations(text) {
   const stations = new Map();
   for (const line of text.split("\n")) {
-    if (!line.startsWith("FR")) continue;
+    if (!line) continue;
     const id = line.slice(0, 11);
     stations.set(id, {
       id,
@@ -166,7 +186,7 @@ function parseStations(text) {
 function parseInventory(text) {
   const inventory = new Map();
   for (const line of text.split("\n")) {
-    if (!line.startsWith("FR")) continue;
+    if (!line) continue;
     const element = line.slice(31, 35);
     if (element !== "TMIN" && element !== "TMAX") continue;
 
@@ -183,9 +203,11 @@ function parseInventory(text) {
 
 function selectStations(stations, inventory, options) {
   const selected = [];
+  const selectedIds = new Set();
   let droppedStart = 0;
   let droppedEnd = 0;
   for (const [id, item] of inventory) {
+    if (!id.startsWith("FR")) continue;
     if (!item.TMIN || !item.TMAX || !stations.has(id)) continue;
     const first = Math.max(item.TMIN.first, item.TMAX.first);
     const last = Math.min(item.TMIN.last, item.TMAX.last);
@@ -196,10 +218,12 @@ function selectStations(stations, inventory, options) {
       else droppedEnd += 1;
       continue;
     }
+    selectedIds.add(id);
     selected.push({
       ...stations.get(id),
       firstYear: first,
       lastYear: last,
+      selectionGroup: "France",
     });
   }
 
@@ -208,7 +232,29 @@ function selectStations(stations, inventory, options) {
     `${droppedEnd} stations ending before ${options.endYear} ` +
     `(legacy tier: start <= ${options.legacyStartYear} and end >= ${options.legacyEndYear})`
   );
-  return selected.sort((a, b) => a.firstYear - b.firstYear || a.name.localeCompare(b.name));
+  selected.sort((a, b) => a.firstYear - b.firstYear || a.name.localeCompare(b.name));
+
+  for (const curated of curatedGlobalStations) {
+    if (selectedIds.has(curated.id)) continue;
+    const item = inventory.get(curated.id);
+    const station = stations.get(curated.id);
+    if (!station || !item?.TMIN || !item?.TMAX) {
+      console.warn(`[noaa] Skipping curated station ${curated.id}: missing metadata`);
+      continue;
+    }
+    const first = Math.max(item.TMIN.first, item.TMAX.first);
+    const last = Math.min(item.TMIN.last, item.TMAX.last);
+    selectedIds.add(curated.id);
+    selected.push({
+      ...station,
+      continent: curated.continent,
+      firstYear: first,
+      lastYear: last,
+      selectionGroup: "Global",
+    });
+  }
+
+  return selected;
 }
 
 function parseDailyFile(text) {
@@ -292,7 +338,11 @@ async function main() {
   const inventory = parseInventory(await readFile(path.join(noaaDir, "ghcnd-inventory.txt"), "utf8"));
   const selected = selectStations(stations, inventory, options);
 
-  console.log(`[noaa] Selected ${selected.length} French stations with TMIN/TMAX ${options.startYear}-${options.endYear}`);
+  console.log(
+    `[noaa] Selected ${selected.length} stations ` +
+    `(${selected.filter((station) => station.selectionGroup === "France").length} French, ` +
+    `${selected.filter((station) => station.selectionGroup === "Global").length} global curated)`
+  );
   const cities = [];
   for (const station of selected) {
     const stationPath = path.join(noaaDir, `${station.id}.dly`);
@@ -309,8 +359,9 @@ async function main() {
     addDeseasonalizedValues(dailySeries, 365);
     cities.push({
       code: station.id,
-      city: station.name,
+      city: station.continent ? `${station.continent} - ${station.name}` : station.name,
       station: station.name,
+      continent: station.continent ?? null,
       lat: station.lat,
       lon: station.lon,
       elevation: station.elevation,

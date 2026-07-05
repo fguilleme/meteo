@@ -1,9 +1,9 @@
 # Meteo SYNOP/NOAA France
 
-Self-hosted dashboard that visualizes monthly and daily temperature history for French weather stations, sourced from two independent datasets:
+Self-hosted dashboard that visualizes monthly and daily temperature history for French and selected global weather stations, sourced from two independent datasets:
 
 - **SYNOP** — Meteo France hourly observations (`synop_YYYY.csv` from data.gouv), 24 hard-coded stations from 1996 to today.
-- **NOAA GHCN-Daily** — TMIN/TMAX records for French stations going back as far as 1900 (Le Bourget) or 1901 (Perpignan, Bordeaux).
+- **NOAA GHCN-Daily** — TMIN/TMAX records for French stations going back as far as 1900 (Le Bourget) or 1901 (Perpignan, Bordeaux), plus a curated set of long-running stations across each continent.
 
 Both sources feed the same UI: a Chart.js line chart with min / avg / max curves, climatology overlays, deseasonalized series (harmonic + STL), an anomaly mode, and an exogenous climate-model overlay (trend, solar 11/22 a, multidecadal, Milanković).
 
@@ -52,7 +52,7 @@ Cache files live under `data/`; `data/noaa/` (station metadata + .dly raw files)
 npm run deploy           # rsync to ${REMOTE:-root@2.24.11.61}:${REMOTE_DIR:-/opt/meteo}
 ```
 
-Server side: systemd units in `deploy/systemd/`. `npm run install:systemd` (as root, on the target) installs `meteo.service` plus `meteo-update.timer` that runs `npm run update:all` daily at 07:30 with up to 20 minutes of jitter.
+Server side: systemd units in `deploy/systemd/`. `npm run install:systemd` (as root, on the target) installs `meteo.service` plus `meteo-update.timer` that runs `npm run update:all` daily at 12:00 with up to 20 minutes of jitter, after the observed SYNOP and NOAA file refreshes. NOAA may republish `.dly` files even when the latest French station measurements have not advanced.
 
 ## Layout
 
@@ -60,7 +60,7 @@ Server side: systemd units in `deploy/systemd/`. `npm run install:systemd` (as r
 server.js                  HTTP server, live reload, cache fanout endpoints
 scripts/build-cache.js     SYNOP CSV -> data/monthly-temperatures.json
 scripts/update-synop.js    download synop_YYYY.csv.gz then build-cache
-scripts/update-noaa-ghcn.js download GHCN station files then build NOAA cache
+scripts/update-noaa-ghcn.js download GHCN station files, French stations + curated global stations, then build NOAA cache
 scripts/cache-output.js    atomic write of full / summary / per-city daily caches
 scripts/seasonality.js     harmonic fit + STL decomposition (LOESS, robust weights)
 public/index.html          single page, no framework

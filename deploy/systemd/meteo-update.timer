@@ -2,7 +2,7 @@
 Description=Daily Meteo data update
 
 [Timer]
-OnCalendar=*-*-* 07:30:00
+OnCalendar=*-*-* 12:00:00
 RandomizedDelaySec=20m
 Persistent=true
 Unit=meteo-update.service
