@@ -111,6 +111,12 @@ input {
   color: var(--accent);
 }
 
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--accent);

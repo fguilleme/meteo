@@ -7,6 +7,26 @@ Self-hosted dashboard that visualizes monthly and daily temperature history for 
 
 Both sources feed the same UI: a Chart.js line chart with min / avg / max curves, climatology overlays, deseasonalized series (harmonic + STL), an anomaly mode, and an exogenous climate-model overlay (trend, solar 11/22 a, multidecadal, Milanković).
 
+## Live demo
+
+**[Open the live weather dashboard →](https://meteo.guilleme.net)**
+
+### Desktop
+
+[![Meteo dashboard on desktop](docs/screenshots/meteo-desktop.jpg)](https://meteo.guilleme.net)
+
+### Mobile landscape — 15 years
+
+<p align="center">
+  <a href="https://meteo.guilleme.net">
+    <img src="docs/screenshots/meteo-mobile-landscape-15-years.jpg" alt="Meteo dashboard on mobile in landscape mode with a 15-year range" width="844">
+  </a>
+</p>
+
+### Seasonality correction and regression
+
+[![Meteo dashboard with seasonality correction and regression](docs/screenshots/meteo-seasonality-regression.jpg)](https://meteo.guilleme.net)
+
 ## Stack
 
 - Node.js HTTP server (`server.js`) — no framework, no bundler.

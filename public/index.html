@@ -5,7 +5,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Meteo SYNOP/NOAA France</title>
-  <link rel="stylesheet" href="/styles.css?v=compact-chart-top-20260705" />
+  <link rel="stylesheet" href="/styles.css?v=github-link-20260816" />
   <script src="/vendor/chart.umd.js"></script>
   <script src="/vendor/hammer.min.js"></script>
   <script src="/vendor/chartjs-plugin-zoom.min.js"></script>
@@ -26,6 +26,15 @@
           <button class="icon-button" id="themeToggle" type="button" aria-label="Changer le theme">
             ◐
           </button>
+          <a
+            class="source-tab github-link"
+            href="https://github.com/fguilleme/meteo"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Voir le code source sur GitHub"
+          >
+            GitHub ↗
+          </a>
         </div>
       </div>
     </section>
@@ -65,6 +74,9 @@
           </button>
           <button class="range-button" data-zoom="30y" type="button">
             30 ans
+          </button>
+          <button class="range-button" data-zoom="15y" type="button">
+            15 ans
           </button>
           <button class="range-button" data-zoom="10y" type="button">
             10 ans
