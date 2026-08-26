@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, "public");
 const liveReloadEnabled = process.env.NODE_ENV !== "production";
+const connectionLoggingEnabled = process.env.LOG_CONNECTIONS !== "0";
 const chartPath = path.join(__dirname, "node_modules", "chart.js", "dist", "chart.umd.js");
 const hammerPath = path.join(__dirname, "node_modules", "hammerjs", "hammer.min.js");
 const chartZoomPath = path.join(
@@ -91,6 +92,25 @@ if (liveReloadEnabled) {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload));
+}
+
+function clientAddress(request) {
+  const forwardedFor = request.headers["x-forwarded-for"];
+  const address = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(",")[0];
+  return (address || request.socket.remoteAddress || "unknown").trim();
+}
+
+function logConnection(request, response, startedAt) {
+  if (!connectionLoggingEnabled) return;
+
+  response.once("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    const pathname = new URL(request.url || "/", "http://localhost").pathname;
+    console.log(
+      `[connection] ${new Date().toISOString()} ${clientAddress(request)} ` +
+        `${request.method} ${pathname} ${response.statusCode} ${durationMs.toFixed(1)}ms`
+    );
+  });
 }
 
 function runScript(scriptName) {
@@ -206,6 +226,8 @@ async function serveStatic(request, response, url) {
 }
 
 const server = createServer(async (request, response) => {
+  logConnection(request, response, process.hrtime.bigint());
+
   try {
     const url = new URL(request.url, `http://${request.headers.host}`);
 
