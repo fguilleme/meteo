@@ -55,6 +55,8 @@ npm run update:all       # both
 Overrides:
 
 - `--year 2024` or `SYNOP_YEAR=2024` for `update:data`.
+- `SYNOP_DATASET_API_URL` to use another data.gouv dataset endpoint, or `SYNOP_BASE_URL` to bypass dataset discovery.
+- `SYNOP_MAX_DATA_AGE_HOURS` to change the current-year freshness limit (default: 72 hours). A stale download fails without replacing the existing cache.
 - `--start-year` / `--end-year` (or `NOAA_START_YEAR` / `NOAA_END_YEAR`) for the modern selection tier of `update:noaa` (default 1920 → currentYear).
 - `--legacy-start-year` / `--legacy-end-year` (or `NOAA_LEGACY_START_YEAR` / `NOAA_LEGACY_END_YEAR`) for the legacy tier — stations starting very early are kept even if their reporting stopped a few years ago (default 1910 / `currentYear - 5`).
 
